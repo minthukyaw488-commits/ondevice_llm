@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+data/chroma_db/
+data/audio/*.wav
+*.egg-info/
+.venv/
+_pdf_loader_test.pdf
