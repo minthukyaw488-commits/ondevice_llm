@@ -23,14 +23,65 @@ from .embeddings import EmbeddingModel
 # --------------------------------------------------------------------------
 # Document loading
 # --------------------------------------------------------------------------
+# A page with fewer than this many extracted characters is treated as a
+# scanned/image page and sent to OCR (if OCR is available).
+_OCR_MIN_CHARS_PER_PAGE = 20
+
+
 def load_text_from_pdf(pdf_path: Path) -> str:
-    """Extract text from a PDF using pdfplumber (page by page)."""
+    """Extract text from a PDF using pdfplumber, with OCR fallback.
+
+    Digital PDFs are read directly. Scanned/image pages (little or no
+    extractable text) are passed to Tesseract Korean OCR when it is installed.
+    """
     import pdfplumber
     parts: List[str] = []
+    scanned_pages: List[int] = []
     with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            parts.append(page.extract_text() or "")
+        for i, page in enumerate(pdf.pages):
+            text = page.extract_text() or ""
+            if len(text.strip()) < _OCR_MIN_CHARS_PER_PAGE:
+                scanned_pages.append(i)
+            parts.append(text)
+
+    if scanned_pages:
+        ocr_text = _ocr_pdf_pages(pdf_path, scanned_pages)
+        for i, text in ocr_text.items():
+            parts[i] = text
     return "\n".join(parts)
+
+
+def _ocr_pdf_pages(pdf_path: Path, page_indices: List[int]) -> dict:
+    """OCR the given (0-based) pages with Tesseract Korean. Graceful if absent.
+
+    Requires: `pytesseract`, `pdf2image` (Python) and system `tesseract-ocr`
+    with the Korean language pack + `poppler-utils`. Returns {page_index: text}.
+    """
+    try:
+        import pytesseract
+        from pdf2image import convert_from_path
+    except Exception:
+        print("[rag] scanned pages detected but OCR libraries are not "
+              "installed (pip install pytesseract pdf2image; and install "
+              "system tesseract-ocr + tesseract-ocr-kor + poppler-utils). "
+              "Skipping OCR.")
+        return {}
+
+    out = {}
+    for idx in page_indices:
+        try:
+            images = convert_from_path(str(pdf_path), first_page=idx + 1,
+                                       last_page=idx + 1, dpi=300)
+            if images:
+                # Grayscale preprocessing improves OCR accuracy on real scans.
+                page_img = images[0].convert("L")
+                # 'kor+eng' handles mixed Korean/English welfare documents.
+                out[idx] = pytesseract.image_to_string(page_img, lang="kor+eng")
+        except Exception as exc:
+            print(f"[rag] OCR failed on page {idx + 1}: {exc.__class__.__name__}")
+    if out:
+        print(f"[rag] OCR recovered text from {len(out)} scanned page(s).")
+    return out
 
 
 def load_documents(docs_dir: Path = config.WELFARE_DOCS_DIR) -> List[dict]:

@@ -25,6 +25,7 @@ from typing import List, Optional
 
 from . import config
 from .abnormal_signal import AbnormalSignalDetector, SignalResult
+from .alerts import AlertDispatcher
 from .llm import ANSWER_SYSTEM_PROMPT, LocalLLM, build_answer_prompt
 from .rag_pipeline import RagPipeline
 
@@ -47,6 +48,7 @@ class WelfareAssistant:
         self.rag.index()                         # build the welfare index once
         self.llm = LocalLLM()
         self.detector = AbnormalSignalDetector()  # accumulates history
+        self.alerts = AlertDispatcher()           # local log (+ opt-in channels)
 
     # -- main entry points -------------------------------------------------
     def ask_text(self, question: str) -> TurnResult:
@@ -60,7 +62,11 @@ class WelfareAssistant:
         prompt = build_answer_prompt(question, contexts)
         answer = self.llm.generate(prompt, system=ANSWER_SYSTEM_PROMPT)
 
-        alert = self._build_alert(signal) if signal.is_abnormal else None
+        alert = None
+        if signal.is_abnormal:
+            alert = self._build_alert(signal)
+            urgency = "긴급" if signal.crisis else "주의"
+            self.alerts.dispatch(self.user_name, urgency, alert)  # log + notify
         return TurnResult(question, answer, sources, signal, alert)
 
     def ask_audio(self, audio_path: str) -> TurnResult:

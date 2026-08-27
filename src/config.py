@@ -13,6 +13,7 @@ DATA_DIR = ROOT_DIR / "data"
 WELFARE_DOCS_DIR = DATA_DIR / "welfare_docs"
 AUDIO_DIR = DATA_DIR / "audio"
 CHROMA_DIR = DATA_DIR / "chroma_db"          # persisted vector store
+ALERT_LOG_DIR = DATA_DIR / "alerts"          # local social-worker alert log
 
 # --- RAG / embedding -----------------------------------------------------
 # bge-m3 is multilingual (Korean + English) and was validated in the
