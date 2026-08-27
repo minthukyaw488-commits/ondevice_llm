@@ -61,5 +61,9 @@ SYMPTOM_KEYWORDS = {
 # Thresholds for the rule-based abnormal-signal decision.
 SYMPTOM_REPEAT_THRESHOLD = 3      # same symptom mentioned >= N times -> flag
 NEGATIVE_SENTIMENT_THRESHOLD = 0.6  # avg negative probability -> flag
+# The sentiment model is binary (no neutral class), so a single info-seeking
+# question can score as negative. Require a minimum number of utterances
+# before the average-sentiment rule may fire, to avoid false alarms.
+SENTIMENT_MIN_UTTERANCES = 3
 # High-risk keywords escalate immediately regardless of counts.
 CRISIS_KEYWORDS = ["죽고 싶", "살기 싫", "자살", "죽어야"]

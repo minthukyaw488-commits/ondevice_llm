@@ -49,18 +49,36 @@ class SentimentAnalyzer:
                   f"using local Korean lexicon fallback.")
 
     def negative_score(self, text: str) -> float:
-        """Return probability that `text` is negative, in [0, 1]."""
+        """Return probability that `text` is negative, in [0, 1].
+
+        The sentiment model is binary and has no neutral class, so plain
+        info-seeking questions can score as strongly negative. To avoid false
+        alarms we only trust a high negative score when the utterance actually
+        contains an emotional/distress cue word; otherwise it is capped at
+        neutral (0.5).
+        """
         if self._pipe is not None:
             res = self._pipe(text[:512])[0]
             label = res["label"].lower()
             score = float(res["score"])
             # Map various label schemes to a negative probability.
-            if any(k in label for k in ("neg", "0", "1 star", "부정")):
-                return score
-            if any(k in label for k in ("pos", "1", "5 star", "긍정")):
-                return 1.0 - score
-            return 0.5
-        return self._lexicon_score(text)
+            if any(k in label for k in ("neg", "label_0", "1 star", "부정")):
+                neg = score
+            elif any(k in label for k in ("pos", "label_1", "5 star", "긍정")):
+                neg = 1.0 - score
+            else:
+                neg = 0.5
+        else:
+            neg = self._lexicon_score(text)
+
+        # Emotional-cue gate: no distress word -> treat as neutral, not negative.
+        if not self._has_negative_cue(text):
+            return min(neg, 0.5)
+        return neg
+
+    @staticmethod
+    def _has_negative_cue(text: str) -> bool:
+        return any(w in text for w in _NEG_WORDS)
 
     @staticmethod
     def _lexicon_score(text: str) -> float:
@@ -90,6 +108,7 @@ class AbnormalSignalDetector:
     sentiment: SentimentAnalyzer = field(default_factory=SentimentAnalyzer)
     repeat_threshold: int = config.SYMPTOM_REPEAT_THRESHOLD
     neg_threshold: float = config.NEGATIVE_SENTIMENT_THRESHOLD
+    sentiment_min_utterances: int = config.SENTIMENT_MIN_UTTERANCES
 
     history: List[str] = field(default_factory=list)
     _neg_scores: List[float] = field(default_factory=list)
@@ -112,7 +131,10 @@ class AbnormalSignalDetector:
 
         avg_neg = (sum(self._neg_scores) / len(self._neg_scores)
                    if self._neg_scores else 0.0)
-        if avg_neg >= self.neg_threshold:
+        # Only fire the sentiment rule once we have enough conversation to
+        # judge a sustained mood (avoids single-question false positives).
+        if (len(self._neg_scores) >= self.sentiment_min_utterances
+                and avg_neg >= self.neg_threshold):
             reasons.append(f"부정 감정 평균 {avg_neg:.2f} (기준 {self.neg_threshold})")
 
         repeated = {g: c for g, c in self._symptom_counts.items()
