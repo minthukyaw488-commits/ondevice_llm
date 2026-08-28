@@ -49,6 +49,7 @@ class WelfareAssistant:
         self.llm = LocalLLM()
         self.detector = AbnormalSignalDetector()  # accumulates history
         self.alerts = AlertDispatcher()           # local log (+ opt-in channels)
+        self._stt = None                          # Whisper, loaded on first use
 
     # -- main entry points -------------------------------------------------
     def ask_text(self, question: str) -> TurnResult:
@@ -76,10 +77,15 @@ class WelfareAssistant:
         """
         self.detector = AbnormalSignalDetector(sentiment=self.detector.sentiment)
 
+    def transcribe(self, audio_path: str) -> str:
+        """Speech-to-text only (Whisper loaded once, then cached)."""
+        if self._stt is None:
+            from .stt import SpeechToText
+            self._stt = SpeechToText()
+        return self._stt.transcribe_file(audio_path)
+
     def ask_audio(self, audio_path: str) -> TurnResult:
-        from .stt import SpeechToText
-        text = SpeechToText().transcribe_file(audio_path)
-        return self.ask_text(text)
+        return self.ask_text(self.transcribe(audio_path))
 
     # -- social-worker alert ----------------------------------------------
     def _build_alert(self, signal: SignalResult) -> str:
