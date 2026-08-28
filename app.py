@@ -13,6 +13,9 @@ import os
 # .streamlit/config.toml). Set before torch is imported by the pipeline.
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
+# macOS bus-error guard: torch and chromadb/onnxruntime can each load their own
+# OpenMP runtime; allowing the duplicate avoids the native crash.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import streamlit as st
 
