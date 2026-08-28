@@ -16,9 +16,10 @@ signal is raised and a summary is generated for the social worker (사회복지�
 All processing is local. Conversation content never leaves the device.
 """
 from __future__ import annotations
+import time
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from . import config
 
@@ -95,17 +96,37 @@ class SentimentAnalyzer:
 # (B) Symptom keyword tracking + combined decision
 # --------------------------------------------------------------------------
 @dataclass
+class _Utterance:
+    """One recorded utterance with the features anomaly detection needs."""
+    ts: float          # unix timestamp
+    text: str
+    neg: float         # negative-sentiment probability [0,1]
+    length: int        # character length (engagement proxy)
+    emotion: bool      # contains a loneliness/sadness keyword
+
+
+@dataclass
 class SignalResult:
     is_abnormal: bool
     reasons: List[str]
     avg_negative: float
     symptom_counts: Dict[str, int]
     crisis: bool = False
+    # Quantified baseline-vs-recent anomaly metrics (empty until enough history).
+    metrics: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
 class AbnormalSignalDetector:
-    """Tracks a running conversation and decides when to alert a social worker."""
+    """Tracks a running conversation and decides when to alert a social worker.
+
+    Two families of signals are combined:
+      - Immediate rules   : symptom repetition, sustained negativity, crisis words.
+      - Anomaly (baseline) : deviation of a RECENT window from the person's own
+                             BASELINE window, quantified as four metrics
+                             (frequency drop, sentiment shift, keyword shift,
+                             response-length drop).
+    """
 
     sentiment: SentimentAnalyzer = field(default_factory=SentimentAnalyzer)
     repeat_threshold: int = config.SYMPTOM_REPEAT_THRESHOLD
@@ -115,38 +136,52 @@ class AbnormalSignalDetector:
     history: List[str] = field(default_factory=list)
     _neg_scores: List[float] = field(default_factory=list)
     _symptom_counts: Counter = field(default_factory=Counter)
+    _records: List[_Utterance] = field(default_factory=list)
 
-    def add_utterance(self, text: str) -> SignalResult:
-        """Record one elderly utterance and re-evaluate the abnormal signal."""
+    def add_utterance(self, text: str, timestamp: Optional[float] = None) -> SignalResult:
+        """Record one elderly utterance and re-evaluate the abnormal signal.
+
+        `timestamp` (unix seconds) can be supplied to replay historical data;
+        it defaults to now.
+        """
+        ts = timestamp if timestamp is not None else time.time()
+        neg = self.sentiment.negative_score(text)
+
         self.history.append(text)
-        self._neg_scores.append(self.sentiment.negative_score(text))
+        self._neg_scores.append(neg)
+        self._records.append(_Utterance(
+            ts=ts, text=text, neg=neg, length=len(text.strip()),
+            emotion=any(k in text for k in config.EMOTION_KEYWORDS)))
 
         # Count symptom groups mentioned in this utterance (once per group).
         for group, variants in config.SYMPTOM_KEYWORDS.items():
             if any(v in text for v in variants):
                 self._symptom_counts[group] += 1
 
-        return self.evaluate()
+        return self.evaluate(now=ts)
 
-    def evaluate(self) -> SignalResult:
+    def evaluate(self, now: Optional[float] = None) -> SignalResult:
         reasons: List[str] = []
 
+        # --- Immediate rules ---------------------------------------------
         avg_neg = (sum(self._neg_scores) / len(self._neg_scores)
                    if self._neg_scores else 0.0)
-        # Only fire the sentiment rule once we have enough conversation to
-        # judge a sustained mood (avoids single-question false positives).
         if (len(self._neg_scores) >= self.sentiment_min_utterances
                 and avg_neg >= self.neg_threshold):
             reasons.append(f"부정 감정 평균 {avg_neg:.2f} (기준 {self.neg_threshold})")
 
-        repeated = {g: c for g, c in self._symptom_counts.items()
-                    if c >= self.repeat_threshold}
-        for g, c in repeated.items():
-            reasons.append(f"'{g}' 관련 호소 {c}회 반복 (기준 {self.repeat_threshold})")
+        for g, c in self._symptom_counts.items():
+            if c >= self.repeat_threshold:
+                reasons.append(f"'{g}' 관련 호소 {c}회 반복 (기준 {self.repeat_threshold})")
 
         crisis = any(kw in " ".join(self.history) for kw in config.CRISIS_KEYWORDS)
         if crisis:
             reasons.append("위기 신호 키워드 감지 (즉시 확인 필요)")
+
+        # --- Anomaly (baseline-vs-recent) metrics ------------------------
+        metrics, anomaly_reasons = self._baseline_metrics(
+            now if now is not None else time.time())
+        reasons.extend(anomaly_reasons)
 
         return SignalResult(
             is_abnormal=bool(reasons),
@@ -154,7 +189,59 @@ class AbnormalSignalDetector:
             avg_negative=avg_neg,
             symptom_counts=dict(self._symptom_counts),
             crisis=crisis,
+            metrics=metrics,
         )
+
+    def _baseline_metrics(self, now: float):
+        """Compare a recent window to a baseline window. Returns (metrics, reasons).
+
+        Metrics (each a plain number the report can cite):
+          freq_drop       : 1 - recent_rate/baseline_rate     (conversation frequency)
+          sentiment_shift : recent_neg_avg - baseline_neg_avg (mood worsening)
+          keyword_shift   : recent_emotion_rate - baseline_emotion_rate
+          length_drop     : 1 - recent_len/baseline_len       (disengagement)
+        """
+        recent_cut = now - config.RECENT_WINDOW_DAYS * 86400
+        baseline_cut = now - config.BASELINE_WINDOW_DAYS * 86400
+        recent = [r for r in self._records if r.ts >= recent_cut]
+        baseline = [r for r in self._records if baseline_cut <= r.ts < recent_cut]
+
+        # Need enough baseline history and some recent activity to compare.
+        if len(baseline) < config.MIN_BASELINE_UTTERANCES or not recent:
+            return {}, []
+
+        def mean(vals):
+            return sum(vals) / len(vals) if vals else 0.0
+
+        baseline_days = max(config.BASELINE_WINDOW_DAYS - config.RECENT_WINDOW_DAYS, 1)
+        base_rate = len(baseline) / baseline_days
+        recent_rate = len(recent) / config.RECENT_WINDOW_DAYS
+
+        freq_drop = max(0.0, 1 - recent_rate / base_rate) if base_rate else 0.0
+        sentiment_shift = mean([r.neg for r in recent]) - mean([r.neg for r in baseline])
+        keyword_shift = mean([r.emotion for r in recent]) - mean([r.emotion for r in baseline])
+        base_len = mean([r.length for r in baseline])
+        length_drop = max(0.0, 1 - mean([r.length for r in recent]) / base_len) if base_len else 0.0
+
+        metrics = {
+            "freq_drop": round(freq_drop, 3),
+            "sentiment_shift": round(sentiment_shift, 3),
+            "keyword_shift": round(keyword_shift, 3),
+            "length_drop": round(length_drop, 3),
+            "baseline_n": len(baseline),
+            "recent_n": len(recent),
+        }
+
+        reasons = []
+        if freq_drop >= config.FREQ_DROP_THRESHOLD:
+            reasons.append(f"대화 빈도 {freq_drop:.0%} 감소 (기준 {config.FREQ_DROP_THRESHOLD:.0%})")
+        if sentiment_shift >= config.SENTIMENT_SHIFT_THRESHOLD:
+            reasons.append(f"부정 감정 +{sentiment_shift:.2f} 상승 (기준 +{config.SENTIMENT_SHIFT_THRESHOLD})")
+        if keyword_shift >= config.KEYWORD_SHIFT_THRESHOLD:
+            reasons.append(f"외로움·우울 표현 +{keyword_shift:.0%} 증가 (기준 +{config.KEYWORD_SHIFT_THRESHOLD:.0%})")
+        if length_drop >= config.LENGTH_DROP_THRESHOLD:
+            reasons.append(f"응답 길이 {length_drop:.0%} 감소 (기준 {config.LENGTH_DROP_THRESHOLD:.0%})")
+        return metrics, reasons
 
 
 if __name__ == "__main__":

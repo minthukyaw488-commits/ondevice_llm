@@ -31,6 +31,7 @@ def _state_dict(bot) -> dict:
         "avg_negative": sig.avg_negative,
         "symptom_counts": dict(sig.symptom_counts),
         "history_len": len(bot.detector.history),
+        "metrics": dict(sig.metrics),
     }
 
 

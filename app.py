@@ -188,6 +188,16 @@ def main():
         else:
             st.caption("감지된 증상 없음")
 
+        metrics = s.get("metrics", {})
+        if metrics:
+            st.write("")
+            st.markdown("**이상징후 지표 (최근 vs 평소)**")
+            c1, c2 = st.columns(2)
+            c1.metric("대화 빈도", f"-{metrics['freq_drop']:.0%}")
+            c2.metric("감정 변화", f"+{metrics['sentiment_shift']:.2f}")
+            c1.metric("외로움 표현", f"+{metrics['keyword_shift']:.0%}")
+            c2.metric("응답 길이", f"-{metrics['length_drop']:.0%}")
+
         st.write("")
         st.markdown("**🔔 사회복지사 알림 로그**")
         if st.session_state["alerts"]:

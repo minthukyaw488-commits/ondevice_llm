@@ -97,6 +97,12 @@ class WelfareAssistant:
         if signal.symptom_counts:
             top = ", ".join(f"{k}({v}회)" for k, v in signal.symptom_counts.items())
             lines.append(f"반복 호소 증상: {top}")
+        m = signal.metrics
+        if m:
+            lines.append(
+                f"이상징후 지표(최근 vs 평소): 대화빈도 -{m['freq_drop']:.0%}, "
+                f"감정 +{m['sentiment_shift']:.2f}, 외로움표현 +{m['keyword_shift']:.0%}, "
+                f"응답길이 -{m['length_drop']:.0%}")
         recent = self.detector.history[-3:]
         lines.append("최근 발화: " + " / ".join(f'"{u}"' for u in recent))
         action = ("자살예방상담(109) 연계 및 즉시 방문 확인 권장"

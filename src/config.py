@@ -68,3 +68,21 @@ NEGATIVE_SENTIMENT_THRESHOLD = 0.6  # avg negative probability -> flag
 SENTIMENT_MIN_UTTERANCES = 3
 # High-risk keywords escalate immediately regardless of counts.
 CRISIS_KEYWORDS = ["죽고 싶", "살기 싫", "자살", "죽어야"]
+
+# --- Anomaly detection: deviation from the person's own baseline ----------
+# Anomaly = a meaningful change from an individual's normal pattern, measured
+# by comparing a RECENT window against a BASELINE window. This needs multi-day
+# history; in a single short session these metrics stay inactive.
+RECENT_WINDOW_DAYS = 3        # "recent" behaviour window
+BASELINE_WINDOW_DAYS = 14     # "normal/baseline" window (includes recent span)
+MIN_BASELINE_UTTERANCES = 5   # need at least this much history to trust a baseline
+
+# Emotional-distress keywords whose *emergence/increase* signals a mood shift.
+EMOTION_KEYWORDS = ["외로", "쓸쓸", "혼자", "슬프", "우울", "그립", "보고 싶",
+                    "눈물", "허전", "재미가 없", "의욕이 없", "희망이 없"]
+
+# Thresholds for each baseline-vs-recent metric.
+FREQ_DROP_THRESHOLD = 0.5         # recent chat rate <= 50% of baseline -> flag
+SENTIMENT_SHIFT_THRESHOLD = 0.25  # recent avg negativity rose by >= this
+KEYWORD_SHIFT_THRESHOLD = 0.30    # emotional-keyword rate rose by >= this
+LENGTH_DROP_THRESHOLD = 0.5       # recent avg reply length <= 50% of baseline
