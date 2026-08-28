@@ -1,19 +1,21 @@
 """
-Web demo: two-role interface.
+Web demo: two-role voice/text interface.
 
-  👵 어르신 (user)      : a clean voice/text chatbot. Answers only - no monitoring
-                          is shown, so the elderly user just has a friendly chat.
+  👵 어르신 (user)      : a clean voice/text chatbot. Speak or type; with voice
+                          mode on, the answer is spoken back (voice-to-voice).
+                          No monitoring is shown to the user.
   🧑‍⚕️ 관리자 (social worker): a background dashboard that watches the same
-                          conversation for abnormal signals and shows the alerts.
+                          conversation for abnormal signals and shows alerts.
 
-The heavy pipeline runs in a separate process (src/worker_server.py). Launch
-with the SAME interpreter that has the models installed:
+Heavy pipeline runs in a separate process (src/worker_server.py). Launch with
+the SAME interpreter that has the models installed:
 
     python -m streamlit run app.py
 """
 import streamlit as st
 
 from src import config
+from src.tts import TextToSpeech
 from src.worker import AssistantClient
 
 CSS = """
@@ -53,10 +55,28 @@ def get_client():
     return AssistantClient()
 
 
+@st.cache_resource
+def get_tts():
+    return TextToSpeech()
+
+
+def _speak(answer: str) -> str | None:
+    """Synthesize the answer to an audio file if voice mode is on. Returns path."""
+    if not st.session_state.get("voice_mode"):
+        return None
+    from pathlib import Path
+    n = st.session_state.get("reply_n", 0) + 1
+    st.session_state["reply_n"] = n
+    out = Path("data/audio") / f"reply_{n}.m4a"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    return get_tts().synthesize(answer, str(out))
+
+
 def _store(r: dict):
-    """Record a turn result into session state (chat + alert log + monitor)."""
+    audio = _speak(r["answer"])
     st.session_state["chat"].append(("user", r["question"]))
-    st.session_state["chat"].append(("bot", r["answer"], sorted(set(r["sources"]))))
+    st.session_state["chat"].append(("bot", r["answer"], sorted(set(r["sources"])), audio))
+    st.session_state["latest_audio"] = audio
     if r.get("alert"):
         urgency = "긴급" if r.get("crisis") else "주의"
         st.session_state["alerts"].insert(0, (urgency, r["alert"]))
@@ -66,8 +86,7 @@ def _store(r: dict):
 def ask_text(client, question: str):
     r = client.ask(question)
     if "error" in r:
-        st.error(r["error"])
-        return
+        st.error(r["error"]); return
     _store(r)
 
 
@@ -78,8 +97,7 @@ def ask_audio(client, wav_bytes: bytes):
     tmp.write_bytes(wav_bytes)
     r = client.ask_audio(str(tmp))
     if "error" in r:
-        st.error(r["error"])
-        return
+        st.error(r["error"]); return
     _store(r)
 
 
@@ -90,22 +108,28 @@ def user_view(client):
                 unsafe_allow_html=True)
     st.write("")
 
-    for msg in st.session_state["chat"]:
+    if not st.session_state["chat"]:
+        cols = st.columns(2)
+        for i, s in enumerate(SAMPLES):
+            if cols[i % 2].button(s, key=f"s{i}", use_container_width=True):
+                ask_text(client, s); st.rerun()
+
+    for idx, msg in enumerate(st.session_state["chat"]):
         if msg[0] == "user":
             with st.chat_message("user"):
                 st.write(msg[1])
         else:
             with st.chat_message("assistant"):
                 st.write(msg[1])
-    if not st.session_state["chat"]:
-        cols = st.columns(2)
-        for i, s in enumerate(SAMPLES):
-            if cols[i % 2].button(s, key=f"s{i}", use_container_width=True):
-                ask_text(client, s)
-                st.rerun()
+                audio = msg[3] if len(msg) > 3 else None
+                if audio:
+                    is_latest = audio == st.session_state.get("latest_audio")
+                    st.audio(audio, format="audio/mp4", autoplay=is_latest)
 
-    # Live microphone (records in the browser, sent to local Whisper).
-    audio = st.audio_input("🎤 마이크로 말씀하세요", key="mic")
+    # --- bottom input bar: mic + text ------------------------------------
+    mic_col, _ = st.columns([1, 3])
+    with mic_col:
+        audio = st.audio_input("🎤 말씀하기", key="mic", label_visibility="collapsed")
     if audio is not None:
         data = audio.getvalue()
         fp = hash(data)
@@ -116,8 +140,7 @@ def user_view(client):
             st.rerun()
 
     if q := st.chat_input("여기에 입력하세요…"):
-        ask_text(client, q)
-        st.rerun()
+        ask_text(client, q); st.rerun()
 
 
 # ---- 관리자 (social worker) view ----------------------------------------
@@ -140,7 +163,6 @@ def admin_view(client):
         st.metric("평균 부정 감정", f"{s.get('avg_negative', 0.0):.2f}")
         st.progress(min(s.get("avg_negative", 0.0), 1.0))
         st.caption(f"대화 {s.get('history_len', 0)}회 누적")
-
     with right:
         st.markdown("**반복 호소 증상**")
         counts = s.get("symptom_counts", {})
@@ -192,6 +214,9 @@ def main():
 
     with st.sidebar:
         view = st.radio("화면 선택", ["👵 어르신 (사용자)", "🧑‍⚕️ 관리자 (사회복지사)"])
+        st.session_state["voice_mode"] = st.toggle(
+            "🔊 음성으로 답변 듣기", value=st.session_state.get("voice_mode", True),
+            help=f"로컬 TTS: {get_tts().backend or '사용 불가'}")
         st.divider()
         if view.startswith("🧑"):
             m = client.meta
@@ -199,13 +224,13 @@ def main():
             st.caption(f"RAG · {m.get('rag_backend')} / {m.get('embedder')}")
             st.caption(f"LLM · {'Ollama' if m.get('llm') else '템플릿 대체'}")
             st.caption(f"감정 · {m.get('sentiment')}")
-            st.caption(f"알림 · {', '.join(m.get('alert_channels', []))}")
             st.metric("누적 알림", f"{len(st.session_state['alerts'])}건")
         if st.button("🔄 대화 초기화", use_container_width=True):
             st.session_state["state"] = client.reset()
             st.session_state["chat"] = []
             st.session_state["alerts"] = []
             st.session_state.pop("last_mic", None)
+            st.session_state.pop("latest_audio", None)
             st.rerun()
 
     if view.startswith("👵"):

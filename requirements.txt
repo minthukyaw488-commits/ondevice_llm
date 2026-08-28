@@ -21,7 +21,10 @@ transformers>=4.40        # Korean sentiment model (local inference)
 torch>=2.0                # backend for transformers / sentence-transformers
 
 # --- Demo UI (Step 5) ---
-streamlit>=1.30
+streamlit>=1.39          # needs st.audio_input (mic) + st.audio autoplay
+# Local text-to-speech for voice-to-voice replies. macOS uses the built-in
+# `say` command (no install); pyttsx3 is the cross-platform fallback.
+pyttsx3>=2.90
 
 # The local LLM runs via the Ollama server (installed separately):
 #   https://ollama.com  ->  `ollama pull llama3.1`  (or qwen2.5)
