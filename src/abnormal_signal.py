@@ -42,7 +42,9 @@ class SentimentAnalyzer:
         self._pipe = None
         try:
             from transformers import pipeline
-            self._pipe = pipeline("sentiment-analysis", model=model_name)
+            # device=-1 forces CPU. On Apple Silicon the MPS backend crashes
+            # (bus error) when run from Streamlit's worker thread; CPU avoids it.
+            self._pipe = pipeline("sentiment-analysis", model=model_name, device=-1)
             self.backend = f"transformers:{model_name}"
         except Exception as exc:
             print(f"[sentiment] model unavailable ({exc.__class__.__name__}); "

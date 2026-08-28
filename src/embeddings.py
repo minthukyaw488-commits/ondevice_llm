@@ -53,7 +53,10 @@ class EmbeddingModel:
         self._model = None            # TF-IDF is created lazily in fit()
         try:
             from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(model_name)
+            # Force CPU: on Apple Silicon the MPS (Metal) backend crashes with a
+            # bus error when called from Streamlit's worker thread. CPU is fast
+            # enough for short welfare queries and avoids that entirely.
+            self._model = SentenceTransformer(model_name, device="cpu")
             self.backend = f"sentence-transformers:{model_name}"
         except Exception as exc:  # package missing or model download blocked
             print(f"[embeddings] '{model_name}' unavailable "
