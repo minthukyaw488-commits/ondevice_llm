@@ -54,8 +54,12 @@ ollama pull llama3.1        # 또는 qwen2.5
 # 터미널 데모
 python demo_cli.py
 
-# 웹 데모 - 반드시 파이프라인이 설치된 동일 환경의 파이썬으로 실행하세요.
-# `streamlit run`이 다른 환경(예: anaconda)을 가리키면 워커가 그 환경의
+# 웹 데모 (Gradio, 권장) - 하나의 입력창에서 음성·텍스트 모두 지원,
+# 음성으로 답변까지(voice-to-voice). 관리자 탭에서 이상신호 모니터링.
+python app_gradio.py
+
+# 웹 데모 (Streamlit) - 반드시 파이프라인이 설치된 동일 환경의 파이썬으로.
+# `streamlit run`이 다른 환경(anaconda 등)을 가리키면 워커가 그 환경의
 # torch를 로드하다 bus error로 죽습니다. `python -m streamlit`이 안전합니다.
 python -m streamlit run app.py
 

@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 
 from . import config
 
@@ -37,6 +38,7 @@ class AssistantClient:
             cwd=str(config.ROOT_DIR),
             env=env,
         )
+        self._lock = threading.Lock()    # serialize RPCs (UI may be concurrent)
         ready = self._read()             # blocks until models load (or EOF)
         if not ready.get("ready"):
             raise RuntimeError(
@@ -57,9 +59,10 @@ class AssistantClient:
         return json.loads(line)
 
     def _rpc(self, req: dict) -> dict:
-        self._proc.stdin.write(json.dumps(req, ensure_ascii=False) + "\n")
-        self._proc.stdin.flush()
-        return self._read()
+        with self._lock:
+            self._proc.stdin.write(json.dumps(req, ensure_ascii=False) + "\n")
+            self._proc.stdin.flush()
+            return self._read()
 
     def ask(self, text: str) -> dict:
         return self._rpc({"cmd": "ask", "text": text})

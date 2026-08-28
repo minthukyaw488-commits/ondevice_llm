@@ -21,7 +21,8 @@ transformers>=4.40        # Korean sentiment model (local inference)
 torch>=2.0                # backend for transformers / sentence-transformers
 
 # --- Demo UI (Step 5) ---
-streamlit>=1.39          # needs st.audio_input (mic) + st.audio autoplay
+gradio>=5.0               # 권장 UI (음성+텍스트 단일 입력창)
+streamlit>=1.39          # (선택) Streamlit UI
 # Local text-to-speech for voice-to-voice replies. macOS uses the built-in
 # `say` command (no install); pyttsx3 is the cross-platform fallback.
 pyttsx3>=2.90

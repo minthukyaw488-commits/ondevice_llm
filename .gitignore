@@ -5,3 +5,5 @@ data/audio/*.wav
 *.egg-info/
 .venv/
 _pdf_loader_test.pdf
+data/alerts/
+data/audio/
