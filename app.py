@@ -8,6 +8,12 @@ Right panel : live abnormal-signal monitor (status, sentiment, symptoms, alerts)
 
 Everything runs locally; no data leaves the machine.
 """
+import os
+# Native-crash guards for the Streamlit + PyTorch combination (see
+# .streamlit/config.toml). Set before torch is imported by the pipeline.
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 import streamlit as st
 
 from src import config

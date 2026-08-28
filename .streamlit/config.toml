@@ -1,0 +1,9 @@
+# Disable Streamlit's local-module file watcher.
+# The watcher inspects imported modules, and poking PyTorch's native
+# `torch.classes` can cause a native crash (bus error / segfault),
+# especially on Apple Silicon. We don't need hot-reload for the demo.
+[server]
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
