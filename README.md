@@ -10,7 +10,7 @@
 
 ---
 
-## 아키텍처 (2-layer)
+## Architecture (2-layer)
 
 ```
 어르신 음성 질문
