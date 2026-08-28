@@ -54,8 +54,10 @@ ollama pull llama3.1        # 또는 qwen2.5
 # 터미널 데모
 python demo_cli.py
 
-# 웹 데모
-streamlit run app.py
+# 웹 데모 - 반드시 파이프라인이 설치된 동일 환경의 파이썬으로 실행하세요.
+# `streamlit run`이 다른 환경(예: anaconda)을 가리키면 워커가 그 환경의
+# torch를 로드하다 bus error로 죽습니다. `python -m streamlit`이 안전합니다.
+python -m streamlit run app.py
 
 # 각 단계 개별 실행/확인
 python -m src.rag_pipeline       # RAG 검색
