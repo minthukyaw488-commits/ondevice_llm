@@ -3,29 +3,23 @@ Step 5 (web demo): Streamlit UI for the welfare assistant.
 
 Run:  streamlit run app.py
 
-Left panel  : conversation (text or sample questions, voice file upload)
-Right panel : live abnormal-signal monitor (status, sentiment, symptoms, alerts)
+The heavy pipeline (RAG + models) runs in a SEPARATE process (src/worker.py);
+this script only exchanges plain dicts with it over a queue. That keeps torch /
+chromadb / whisper off Streamlit's worker thread, which otherwise crashes with
+a bus error on macOS.
 
+Left panel  : conversation (text, sample questions, voice file upload)
+Right panel : live abnormal-signal monitor (status, sentiment, symptoms, alerts)
 Everything runs locally; no data leaves the machine.
 """
-import os
-# Native-crash guards for the Streamlit + PyTorch combination (see
-# .streamlit/config.toml). Set before torch is imported by the pipeline.
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-# macOS bus-error guard: torch and chromadb/onnxruntime can each load their own
-# OpenMP runtime; allowing the duplicate avoids the native crash.
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-
 import streamlit as st
 
 from src import config
-from src.pipeline import WelfareAssistant
+from src.worker import AssistantClient
 
 st.set_page_config(page_title="독거노인 복지 안내 · 이상신호 감지",
                    page_icon="👵", layout="wide")
 
-# ---- styling -------------------------------------------------------------
 st.markdown("""
 <style>
   .block-container{padding-top:2.2rem; max-width:1200px}
@@ -51,13 +45,17 @@ st.markdown("""
 
 
 @st.cache_resource
-def get_bot():
-    return WelfareAssistant(user_name="데모 어르신")
+def get_client():
+    # Started once; keeps the model-loaded worker process alive across reruns.
+    return AssistantClient()
 
 
-bot = get_bot()
+with st.spinner("모델을 불러오는 중입니다… (최초 실행은 다소 걸립니다)"):
+    client = get_client()
+
 st.session_state.setdefault("chat", [])
 st.session_state.setdefault("alerts", [])
+st.session_state.setdefault("state", client.state())
 
 SAMPLES = [
     "기초연금은 어떻게 신청하나요?",
@@ -70,12 +68,16 @@ SAMPLES = [
 
 
 def handle(question: str):
-    res = bot.ask_text(question)
-    st.session_state["chat"].append(("user", res.question))
-    st.session_state["chat"].append(("bot", res.answer, sorted(set(res.sources))))
-    if res.alert:
-        urgency = "긴급" if res.signal.crisis else "주의"
-        st.session_state["alerts"].insert(0, (urgency, res.alert))
+    r = client.ask(question)
+    if "error" in r:
+        st.error(r["error"])
+        return
+    st.session_state["chat"].append(("user", r["question"]))
+    st.session_state["chat"].append(("bot", r["answer"], sorted(set(r["sources"]))))
+    if r["alert"]:
+        urgency = "긴급" if r["crisis"] else "주의"
+        st.session_state["alerts"].insert(0, (urgency, r["alert"]))
+    st.session_state["state"] = r
 
 
 # ---- header --------------------------------------------------------------
@@ -86,19 +88,20 @@ st.write("")
 
 # ---- sidebar -------------------------------------------------------------
 with st.sidebar:
+    m = client.meta
     st.subheader("⚙️ 시스템 상태")
-    st.caption(f"RAG · {bot.rag.backend} / {bot.rag.embedder.backend}")
-    st.caption(f"LLM · {'Ollama 실행 중' if bot.llm.available else '미실행 → 템플릿 대체'}")
-    st.caption(f"감정 분석 · {bot.detector.sentiment.backend}")
-    st.caption(f"알림 채널 · {', '.join(bot.alerts.channels)}")
+    st.caption(f"RAG · {m.get('rag_backend')} / {m.get('embedder')}")
+    st.caption(f"LLM · {'Ollama 실행 중' if m.get('llm') else '미실행 → 템플릿 대체'}")
+    st.caption(f"감정 분석 · {m.get('sentiment')}")
+    st.caption(f"알림 채널 · {', '.join(m.get('alert_channels', []))}")
     st.divider()
     st.subheader("판정 임계값")
     st.caption(f"증상 반복 ≥ {config.SYMPTOM_REPEAT_THRESHOLD}회")
     st.caption(f"부정 감정 평균 ≥ {config.NEGATIVE_SENTIMENT_THRESHOLD}")
-    st.caption(f"위기 키워드 → 즉시 긴급")
+    st.caption("위기 키워드 → 즉시 긴급")
     st.divider()
     if st.button("🔄 대화 초기화", use_container_width=True):
-        bot.reset_conversation()
+        st.session_state["state"] = client.reset()
         st.session_state["chat"] = []
         st.session_state["alerts"] = []
         st.rerun()
@@ -124,14 +127,22 @@ with left:
                                  label_visibility="collapsed")
         if st.button("음성 인식 후 질문") and audio is not None:
             from pathlib import Path
-            from src.stt import SpeechToText
             tmp = Path("data/audio") / audio.name
             tmp.parent.mkdir(parents=True, exist_ok=True)
             tmp.write_bytes(audio.read())
-            text = SpeechToText().transcribe_file(tmp)
-            st.info(f"음성 인식 결과: {text}")
-            handle(text)
-            st.rerun()
+            r = client.ask_audio(str(tmp))
+            if "error" in r:
+                st.error(r["error"])
+            else:
+                st.info(f"음성 인식 결과: {r['question']}")
+                st.session_state["chat"].append(("user", r["question"]))
+                st.session_state["chat"].append(("bot", r["answer"],
+                                                sorted(set(r["sources"]))))
+                if r["alert"]:
+                    urg = "긴급" if r["crisis"] else "주의"
+                    st.session_state["alerts"].insert(0, (urg, r["alert"]))
+                st.session_state["state"] = r
+                st.rerun()
 
     st.divider()
     if not st.session_state["chat"]:
@@ -148,25 +159,26 @@ with left:
 
 with right:
     st.markdown("#### 🩺 이상신호 모니터")
-    sig = bot.detector.evaluate()
+    s = st.session_state["state"]
 
-    if sig.crisis:
+    if s.get("crisis"):
         st.markdown('<span class="pill crit">🚨 긴급 · 즉시 확인</span>', unsafe_allow_html=True)
-    elif sig.is_abnormal:
+    elif s.get("is_abnormal"):
         st.markdown('<span class="pill warn">⚠️ 주의 · 이상신호</span>', unsafe_allow_html=True)
     else:
         st.markdown('<span class="pill ok">✅ 정상</span>', unsafe_allow_html=True)
 
     st.write("")
-    st.metric("평균 부정 감정", f"{sig.avg_negative:.2f}",
+    st.metric("평균 부정 감정", f"{s.get('avg_negative', 0.0):.2f}",
               help=f"기준 {config.NEGATIVE_SENTIMENT_THRESHOLD} 이상이면 플래그")
-    st.progress(min(sig.avg_negative, 1.0))
-    st.caption(f"대화 {len(bot.detector.history)}회 누적")
+    st.progress(min(s.get("avg_negative", 0.0), 1.0))
+    st.caption(f"대화 {s.get('history_len', 0)}회 누적")
 
     st.write("")
     st.markdown("**반복 호소 증상**")
-    if sig.symptom_counts:
-        for grp, cnt in sorted(sig.symptom_counts.items(), key=lambda x: -x[1]):
+    counts = s.get("symptom_counts", {})
+    if counts:
+        for grp, cnt in sorted(counts.items(), key=lambda x: -x[1]):
             flag = " ⚠️" if cnt >= config.SYMPTOM_REPEAT_THRESHOLD else ""
             st.markdown(f'<div class="sym"><span>{grp}</span>'
                         f'<span><b>{cnt}회</b>{flag}</span></div>', unsafe_allow_html=True)
