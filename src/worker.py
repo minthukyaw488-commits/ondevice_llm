@@ -1,99 +1,43 @@
 """
-Run the WelfareAssistant in a separate process.
+Client handle for the assistant worker process.
 
-Why: Streamlit runs the app script in a worker thread. On macOS several native
-libraries (torch / chromadb / faster-whisper) crash with a bus error when
-initialised or called off the main thread. Running the assistant in its own
-process (where it owns the main thread) side-steps that entire class of crash.
-Streamlit only exchanges plain picklable dicts over a queue - no native code in
-its thread. This mirrors how the LLM already runs as a separate local process.
+The heavy pipeline (RAG + torch models + chromadb) runs in a SEPARATE process
+(src/worker_server.py) launched as a clean subprocess - it never imports
+Streamlit. This matters on macOS: when the worker was started via
+multiprocessing "spawn", the child re-imported app.py and thus Streamlit
+before torch, and the native-library mix crashed with a bus error (SIGBUS).
+A plain subprocess that only imports the pipeline avoids that entirely.
+
+Communication is line-delimited JSON over the subprocess's stdin/stdout; the
+worker's stderr is inherited so its [worker] logs appear in the terminal.
 """
 from __future__ import annotations
-import multiprocessing as mp
-from typing import Optional
+import json
+import os
+import subprocess
+import sys
 
-
-def _turn_dict(res, bot) -> dict:
-    return {
-        "question": res.question,
-        "answer": res.answer,
-        "sources": list(res.sources),
-        "alert": res.alert,
-        **_state_dict(bot),
-    }
-
-
-def _state_dict(bot) -> dict:
-    sig = bot.detector.evaluate()
-    return {
-        "is_abnormal": sig.is_abnormal,
-        "crisis": sig.crisis,
-        "avg_negative": sig.avg_negative,
-        "symptom_counts": dict(sig.symptom_counts),
-        "history_len": len(bot.detector.history),
-        "metrics": dict(sig.metrics),
-    }
-
-
-def _log(msg: str) -> None:
-    print(f"[worker] {msg}", flush=True)
-
-
-def run_worker(req_q: "mp.Queue", resp_q: "mp.Queue") -> None:
-    """Child-process entry point. Builds the assistant, then serves requests."""
-    try:
-        _log("starting… importing pipeline")
-        from src.pipeline import WelfareAssistant
-        _log("building assistant (loading models + indexing welfare docs)…")
-        bot = WelfareAssistant(user_name="데모 어르신")   # loads + indexes once
-        _log("assistant ready")
-    except Exception as exc:
-        import traceback
-        traceback.print_exc()
-        # Tell the parent instead of letting it block forever on ready.
-        resp_q.put({"ready": False, "error": f"{type(exc).__name__}: {exc}"})
-        return
-
-    resp_q.put({"ready": True, "meta": {
-        "rag_backend": bot.rag.backend,
-        "embedder": bot.rag.embedder.backend,
-        "llm": bot.llm.available,
-        "sentiment": bot.detector.sentiment.backend,
-        "alert_channels": bot.alerts.channels,
-    }})
-
-    while True:
-        req = req_q.get()
-        cmd = req.get("cmd")
-        if cmd == "stop":
-            break
-        try:
-            if cmd == "ask":
-                resp_q.put(_turn_dict(bot.ask_text(req["text"]), bot))
-            elif cmd == "ask_audio":
-                resp_q.put(_turn_dict(bot.ask_audio(req["path"]), bot))
-            elif cmd == "reset":
-                bot.reset_conversation()
-                resp_q.put(_state_dict(bot))
-            elif cmd == "state":
-                resp_q.put(_state_dict(bot))
-            else:
-                resp_q.put({"error": f"unknown command: {cmd}"})
-        except Exception as exc:  # never let the worker die on one bad request
-            resp_q.put({"error": f"{type(exc).__name__}: {exc}"})
+from . import config
 
 
 class AssistantClient:
-    """Parent-side handle. Starts the worker once and does blocking RPC."""
-
     def __init__(self):
-        ctx = mp.get_context("spawn")     # fresh main thread in the child
-        self._req_q = ctx.Queue()
-        self._resp_q = ctx.Queue()
-        self._proc = ctx.Process(target=run_worker,
-                                 args=(self._req_q, self._resp_q), daemon=True)
-        self._proc.start()
-        ready = self._get(timeout=600)    # wait until models are loaded
+        env = dict(os.environ)
+        env.setdefault("TOKENIZERS_PARALLELISM", "false")
+        env.setdefault("OMP_NUM_THREADS", "1")
+        env.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+        # Launch from the project root so `-m src.worker_server` resolves.
+        self._proc = subprocess.Popen(
+            [sys.executable, "-m", "src.worker_server"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,      # JSON responses only
+            stderr=None,                 # inherit: [worker] logs go to terminal
+            text=True,
+            bufsize=1,                   # line-buffered
+            cwd=str(config.ROOT_DIR),
+            env=env,
+        )
+        ready = self._read()             # blocks until models load (or EOF)
         if not ready.get("ready"):
             raise RuntimeError(
                 "Assistant worker failed to start: "
@@ -101,27 +45,21 @@ class AssistantClient:
                 + " (see the [worker] lines in the terminal)")
         self.meta = ready.get("meta", {})
 
-    def _get(self, timeout: float) -> dict:
-        """Wait for a response, but fail fast if the worker process dies."""
-        import queue
-        import time
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            try:
-                return self._resp_q.get(timeout=1.0)
-            except queue.Empty:
-                if not self._proc.is_alive():
-                    raise RuntimeError(
-                        f"Assistant worker process died (exit code "
-                        f"{self._proc.exitcode}) - likely a native crash while "
-                        f"loading models. See the [worker] lines in the terminal.")
-        raise RuntimeError(
-            f"No response from the assistant worker within {timeout:.0f}s. "
-            f"Check the terminal for [worker] logs.")
+    def _read(self) -> dict:
+        """Read one JSON response line. Detects a dead worker via EOF."""
+        line = self._proc.stdout.readline()
+        if line == "":                   # pipe closed -> the worker died
+            code = self._proc.poll()
+            raise RuntimeError(
+                f"Assistant worker process exited (code {code}) - likely a "
+                f"native crash while loading models. See the [worker] lines "
+                f"in the terminal.")
+        return json.loads(line)
 
     def _rpc(self, req: dict) -> dict:
-        self._req_q.put(req)
-        return self._get(timeout=180)
+        self._proc.stdin.write(json.dumps(req, ensure_ascii=False) + "\n")
+        self._proc.stdin.flush()
+        return self._read()
 
     def ask(self, text: str) -> dict:
         return self._rpc({"cmd": "ask", "text": text})
@@ -137,7 +75,6 @@ class AssistantClient:
 
 
 if __name__ == "__main__":
-    # Smoke test the IPC plumbing.
     c = AssistantClient()
     print("meta:", c.meta)
     print("ask :", {k: v for k, v in c.ask("기초연금 신청 방법").items()
