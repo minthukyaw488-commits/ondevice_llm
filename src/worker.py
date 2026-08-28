@@ -34,10 +34,25 @@ def _state_dict(bot) -> dict:
     }
 
 
+def _log(msg: str) -> None:
+    print(f"[worker] {msg}", flush=True)
+
+
 def run_worker(req_q: "mp.Queue", resp_q: "mp.Queue") -> None:
     """Child-process entry point. Builds the assistant, then serves requests."""
-    from src.pipeline import WelfareAssistant
-    bot = WelfareAssistant(user_name="데모 어르신")   # loads + indexes once
+    try:
+        _log("starting… importing pipeline")
+        from src.pipeline import WelfareAssistant
+        _log("building assistant (loading models + indexing welfare docs)…")
+        bot = WelfareAssistant(user_name="데모 어르신")   # loads + indexes once
+        _log("assistant ready")
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        # Tell the parent instead of letting it block forever on ready.
+        resp_q.put({"ready": False, "error": f"{type(exc).__name__}: {exc}"})
+        return
+
     resp_q.put({"ready": True, "meta": {
         "rag_backend": bot.rag.backend,
         "embedder": bot.rag.embedder.backend,
@@ -77,12 +92,35 @@ class AssistantClient:
         self._proc = ctx.Process(target=run_worker,
                                  args=(self._req_q, self._resp_q), daemon=True)
         self._proc.start()
-        ready = self._resp_q.get()        # wait until models are loaded
+        ready = self._get(timeout=600)    # wait until models are loaded
+        if not ready.get("ready"):
+            raise RuntimeError(
+                "Assistant worker failed to start: "
+                + ready.get("error", "unknown error")
+                + " (see the [worker] lines in the terminal)")
         self.meta = ready.get("meta", {})
+
+    def _get(self, timeout: float) -> dict:
+        """Wait for a response, but fail fast if the worker process dies."""
+        import queue
+        import time
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                return self._resp_q.get(timeout=1.0)
+            except queue.Empty:
+                if not self._proc.is_alive():
+                    raise RuntimeError(
+                        f"Assistant worker process died (exit code "
+                        f"{self._proc.exitcode}) - likely a native crash while "
+                        f"loading models. See the [worker] lines in the terminal.")
+        raise RuntimeError(
+            f"No response from the assistant worker within {timeout:.0f}s. "
+            f"Check the terminal for [worker] logs.")
 
     def _rpc(self, req: dict) -> dict:
         self._req_q.put(req)
-        return self._resp_q.get()
+        return self._get(timeout=180)
 
     def ask(self, text: str) -> dict:
         return self._rpc({"cmd": "ask", "text": text})
