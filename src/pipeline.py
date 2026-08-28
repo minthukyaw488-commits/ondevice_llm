@@ -69,6 +69,13 @@ class WelfareAssistant:
             self.alerts.dispatch(self.user_name, urgency, alert)  # log + notify
         return TurnResult(question, answer, sources, signal, alert)
 
+    def reset_conversation(self) -> None:
+        """Clear the conversation history for a new session/demo.
+
+        Reuses the already-loaded sentiment model so no reload is needed.
+        """
+        self.detector = AbnormalSignalDetector(sentiment=self.detector.sentiment)
+
     def ask_audio(self, audio_path: str) -> TurnResult:
         from .stt import SpeechToText
         text = SpeechToText().transcribe_file(audio_path)
