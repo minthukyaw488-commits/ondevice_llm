@@ -17,14 +17,30 @@ import atexit
 import os
 import platform
 import shutil
+import socket
 import subprocess
 import sys
 import time
 import urllib.request
 
-PORT = 8501
-URL = f"http://localhost:{PORT}"
 PROFILE = os.path.expanduser("~/.welfare_app_profile")  # remembers mic permission
+PORT = None          # chosen at runtime to avoid clashing with other apps
+URL = None
+
+
+def _port_in_use(p: int) -> bool:
+    with socket.socket() as s:
+        return s.connect_ex(("127.0.0.1", p)) == 0
+
+
+def choose_port() -> int:
+    # Prefer stable ports unique to this app; fall back to any free port so we
+    # never collide with another Streamlit project already on 8501.
+    for p in (8531, 8532, 8533, 8534):
+        if not _port_in_use(p):
+            return p
+    s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close()
+    return p
 
 
 def wait_ready(timeout: int = 240) -> bool:
@@ -82,7 +98,10 @@ def launch_window():
 
 
 def main():
-    print("복지 도우미 앱을 시작합니다… (모델 로딩까지 잠시 걸립니다)")
+    global PORT, URL
+    PORT = choose_port()
+    URL = f"http://localhost:{PORT}"
+    print(f"복지 도우미 앱을 시작합니다… (포트 {PORT}, 모델 로딩까지 잠시 걸립니다)")
     server = subprocess.Popen(
         [sys.executable, "-m", "streamlit", "run", "app.py",
          "--server.headless=true", f"--server.port={PORT}",
