@@ -70,6 +70,9 @@ class AssistantClient:
     def ask_audio(self, path: str) -> dict:
         return self._rpc({"cmd": "ask_audio", "path": path})
 
+    def transcribe(self, path: str) -> dict:
+        return self._rpc({"cmd": "transcribe", "path": path})
+
     def reset(self) -> dict:
         return self._rpc({"cmd": "reset"})
 

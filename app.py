@@ -334,7 +334,8 @@ def voice_conversation(client):
 
     class VP:
         def __init__(self):
-            self.seg = UtteranceSegmenter(silence_ms=800, min_speech_ms=300)
+            self.seg = UtteranceSegmenter(aggressiveness=3, silence_ms=800,
+                                          min_speech_ms=400)
             self.res = av.AudioResampler(format="s16", layout="mono", rate=16000)
             self.utterances = queue.Queue()
 
@@ -375,6 +376,17 @@ def voice_conversation(client):
         orbset("listen", "위의 START를 눌러 음성 대화를 시작하세요.")
         return
 
+    # Common Whisper hallucinations on silence/noise - ignore these.
+    NOISE = {"", ".", "..", "네", "음", "아", "감사합니다", "시청해주셔서 감사합니다",
+             "구독과 좋아요", "다음 영상에서 만나요", "고맙습니다", "수고하셨습니다"}
+
+    def drain(proc):
+        try:
+            while True:
+                proc.utterances.get_nowait()
+        except queue.Empty:
+            pass
+
     orbset("listen", "듣고 있어요…")
     while ctx.state.playing:
         proc = ctx.audio_processor
@@ -386,14 +398,20 @@ def voice_conversation(client):
         except queue.Empty:
             continue
 
-        orbset("think", "생각 중…")
         Path("data/audio").mkdir(parents=True, exist_ok=True)
         utt = Path("data/audio") / "portal_utt.wav"
         utt.write_bytes(wav)
-        r = client.ask_audio(str(utt))
+
+        # Transcribe first and reject noise / the AI's own echoed voice.
+        text = (client.transcribe(str(utt)).get("text") or "").strip()
+        if len(text) < 2 or text in NOISE:
+            continue                                   # keep listening, no reply
+
+        orbset("think", "생각 중…")
+        r = client.ask(text)
         if "error" in r:
             st.session_state["vchat"].append(("assistant", f"⚠️ {r['error']}"))
-            render(); orbset("listen", "듣고 있어요…"); continue
+            render(); drain(proc); orbset("listen", "듣고 있어요…"); continue
 
         st.session_state["vchat"].append(("user", r["question"]))
         st.session_state["vchat"].append(("assistant", r["answer"]))
@@ -409,6 +427,14 @@ def voice_conversation(client):
         if audio:
             orbset("speak", "말하는 중…")
             audio_ph.audio(audio, format="audio/mp4", autoplay=True)
+            # Half-duplex: while the reply plays, discard whatever the mic hears
+            # (the AI's own voice) so it does not answer itself.
+            cooldown = min(max(len(r["answer"]) * 0.09, 2.0), 12.0)
+            end = time.time() + cooldown
+            while time.time() < end:
+                drain(proc)
+                time.sleep(0.15)
+        drain(proc)                                    # final flush before listening
         orbset("listen", "듣고 있어요…")
 
 

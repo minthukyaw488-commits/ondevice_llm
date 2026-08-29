@@ -95,6 +95,8 @@ def main() -> None:
                 send(_turn_dict(bot.ask_text(req["text"]), bot))
             elif cmd == "ask_audio":
                 send(_turn_dict(bot.ask_audio(req["path"]), bot))
+            elif cmd == "transcribe":
+                send({"text": bot.transcribe(req["path"])})
             elif cmd == "reset":
                 bot.reset_conversation()
                 send(_state_dict(bot))
