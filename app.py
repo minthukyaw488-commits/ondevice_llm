@@ -132,6 +132,18 @@ def inject_css():
       .foot b{{color:#fff; display:block; margin-bottom:8px; font-size:1rem}}
       .foot .copy{{border-top:1px solid #24457e; padding-top:16px; font-size:.85rem;
         color:#8ea6cf}}
+
+      /* hands-free voice orb */
+      .orb{{width:170px;height:170px;border-radius:50%;margin:26px auto;
+        background:radial-gradient(circle at 50% 35%,#cdd6ff,#1a56b0 70%,{navy});
+        box-shadow:0 14px 44px rgba(11,46,99,.35)}}
+      .orb.listen{{animation:breathe 2.4s ease-in-out infinite}}
+      .orb.think{{animation:spin 1.1s linear infinite}}
+      .orb.speak{{animation:pulse .7s ease-in-out infinite}}
+      @keyframes breathe{{0%,100%{{transform:scale(1);opacity:.9}}50%{{transform:scale(1.06);opacity:1}}}}
+      @keyframes pulse{{0%,100%{{transform:scale(1)}}50%{{transform:scale(1.12)}}}}
+      @keyframes spin{{to{{transform:rotate(360deg)}}}}
+      .vstatus{{text-align:center;color:{navy};font-weight:800;font-size:1.25rem;margin-bottom:6px}}
     </style>
     """, unsafe_allow_html=True)
 
@@ -295,6 +307,106 @@ def footer():
     """, unsafe_allow_html=True)
 
 
+def voice_conversation(client):
+    """Hands-free ChatGPT-style voice chat inside the portal (no record/send)."""
+    import queue
+    import time
+    from pathlib import Path
+    try:
+        import av
+        import numpy as np
+        from streamlit_webrtc import WebRtcMode, webrtc_streamer
+        from src.vad_stream import UtteranceSegmenter
+    except Exception:
+        st.error("음성 대화 기능 패키지가 필요합니다: "
+                 "pip install streamlit-webrtc webrtcvad 'setuptools<81'")
+        return
+
+    st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
+    st.markdown('<h2>🎙️ 음성 대화 (AI 도우미)</h2>'
+                '<p class="sub">마이크를 켜고 그냥 말씀하세요. 말이 끝나면 자동으로 답합니다. '
+                '(🎧 이어폰 사용 권장 · 실험 기능)</p>', unsafe_allow_html=True)
+
+    class VP:
+        def __init__(self):
+            self.seg = UtteranceSegmenter(silence_ms=800, min_speech_ms=300)
+            self.res = av.AudioResampler(format="s16", layout="mono", rate=16000)
+            self.utterances = queue.Queue()
+
+        def recv(self, frame):
+            for f in self.res.resample(frame):
+                wav = self.seg.add_pcm(f.to_ndarray().astype(np.int16).tobytes())
+                if wav:
+                    self.utterances.put(wav)
+            return frame
+
+    orb = st.empty()
+    status = st.empty()
+    ctx = webrtc_streamer(
+        key="portal_voice", mode=WebRtcMode.SENDONLY, audio_processor_factory=VP,
+        media_stream_constraints={
+            "audio": {"echoCancellation": True, "noiseSuppression": True},
+            "video": False},
+        async_processing=True)
+    chat_ph = st.empty()
+    audio_ph = st.empty()
+    tts = get_tts()
+    st.session_state.setdefault("vchat", [])
+
+    def render():
+        with chat_ph.container():
+            for role, text in st.session_state["vchat"][-8:]:
+                with st.chat_message("user" if role == "user" else "assistant"):
+                    st.write(text)
+
+    def orbset(state, label):
+        orb.markdown(f'<div class="orb {state}"></div>', unsafe_allow_html=True)
+        status.markdown(f'<div class="vstatus">{label}</div>', unsafe_allow_html=True)
+
+    render()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    if not ctx.state.playing:
+        orbset("listen", "위의 START를 눌러 음성 대화를 시작하세요.")
+        return
+
+    orbset("listen", "듣고 있어요…")
+    while ctx.state.playing:
+        proc = ctx.audio_processor
+        if proc is None:
+            time.sleep(0.1)
+            continue
+        try:
+            wav = proc.utterances.get(timeout=0.5)
+        except queue.Empty:
+            continue
+
+        orbset("think", "생각 중…")
+        Path("data/audio").mkdir(parents=True, exist_ok=True)
+        utt = Path("data/audio") / "portal_utt.wav"
+        utt.write_bytes(wav)
+        r = client.ask_audio(str(utt))
+        if "error" in r:
+            st.session_state["vchat"].append(("assistant", f"⚠️ {r['error']}"))
+            render(); orbset("listen", "듣고 있어요…"); continue
+
+        st.session_state["vchat"].append(("user", r["question"]))
+        st.session_state["vchat"].append(("assistant", r["answer"]))
+        st.session_state["state"] = r
+        if r.get("alert"):
+            st.session_state["alerts"].insert(
+                0, ("긴급" if r.get("crisis") else "주의", r["alert"]))
+        render()
+
+        n = st.session_state.get("reply_n", 0) + 1
+        st.session_state["reply_n"] = n
+        audio = tts.synthesize(r["answer"], str(Path("data/audio") / f"vreply_{n}.m4a"))
+        if audio:
+            orbset("speak", "말하는 중…")
+            audio_ph.audio(audio, format="audio/mp4", autoplay=True)
+        orbset("listen", "듣고 있어요…")
+
+
 def admin_view(client):
     st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
     st.markdown('<h2>🧑‍⚕️ 관리자 · 이상신호 모니터</h2>'
@@ -353,6 +465,7 @@ def main():
             help=f"로컬 TTS: {get_tts().backend or '사용 불가'}")
         st.divider()
         view = st.radio("화면", ["🏛️ 복지포털 (어르신)", "🧑‍⚕️ 관리자"])
+        mode = st.radio("상담 방식", ["💬 텍스트·검색", "🎙️ 음성 대화 (핸즈프리)"])
         if st.button("🔄 대화 초기화", use_container_width=True):
             st.session_state["state"] = client.reset()
             st.session_state["chat"] = []
@@ -366,6 +479,9 @@ def main():
         header_nav()
         admin_view(client)
         footer()
+    elif mode.startswith("🎙️"):
+        header_nav()
+        voice_conversation(client)   # hands-free ChatGPT-style voice loop
     else:
         header_nav()
         hero(client)
