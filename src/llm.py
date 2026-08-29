@@ -48,6 +48,12 @@ class LocalLLM:
             "prompt": prompt,
             "system": system,
             "stream": False,
+            "keep_alive": "30m",          # keep the model loaded -> no reload latency
+            "options": {
+                "num_predict": 220,       # cap answer length -> faster replies
+                "temperature": 0.4,
+                "top_k": 20,
+            },
         }
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(

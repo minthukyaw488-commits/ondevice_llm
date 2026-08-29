@@ -108,20 +108,20 @@ def inject_css():
       .menu span:hover{{background:{surface2}; color:{navy}}}
 
       /* hero */
-      .hero .gov-wrap{{padding:30px 24px 34px}}
-      .hero-inner{{border-radius:26px; padding:48px 46px; color:#fff; position:relative;
+      .hero .gov-wrap{{padding:22px 24px 20px}}
+      .hero-inner{{border-radius:22px; padding:30px 44px; color:#fff; position:relative;
         overflow:hidden;
         background:
           radial-gradient(130% 120% at 12% 8%, {accent}55, transparent 55%),
           radial-gradient(120% 130% at 92% 100%, #7aa0ff44, transparent 50%),
           linear-gradient(135deg, {navy} 0%, {navy2} 100%);
         box-shadow:0 30px 60px -24px {navy}80}}
-      .hero .eyebrow{{display:inline-block; font-size:.82rem; font-weight:700;
+      .hero .eyebrow{{display:inline-block; font-size:.78rem; font-weight:700;
         letter-spacing:.14em; text-transform:uppercase; color:#bcd0ff;
-        background:#ffffff1f; padding:6px 14px; border-radius:999px; margin-bottom:18px}}
-      .hero h1{{font-size:2.55rem; font-weight:800; margin:0 0 12px; letter-spacing:-.035em;
-        line-height:1.18}}
-      .hero p{{font-size:1.18rem; color:#d7e2fb; margin:0; max-width:56ch; line-height:1.6;
+        background:#ffffff1f; padding:5px 13px; border-radius:999px; margin-bottom:12px}}
+      .hero h1{{font-size:2.05rem; font-weight:800; margin:0 0 8px; letter-spacing:-.03em;
+        line-height:1.2}}
+      .hero p{{font-size:1.08rem; color:#d7e2fb; margin:0; max-width:70ch; line-height:1.55;
         position:relative; z-index:1}}
       .hero .eyebrow, .hero h1{{position:relative; z-index:1}}
       .hero-art{{position:absolute; right:20px; top:50%; transform:translateY(-50%);
@@ -138,6 +138,11 @@ def inject_css():
       /* header row (brand | search | nav) */
       .brand-svg{{width:24px;height:24px;color:#fff}}
       .menu{{justify-content:flex-end}}
+      .util .gov-wrap{{justify-content:flex-end}}
+      /* header search: strip Streamlit form chrome so it aligns with brand/nav */
+      [data-testid="stForm"]{{border:0 !important; padding:0 !important; box-shadow:none !important}}
+      [data-testid="stForm"] [data-testid="stTextInput"] input{{height:44px}}
+      [data-testid="stForm"] button{{height:44px}}
 
       /* colored category cards */
       .cat-grid{{display:grid; grid-template-columns:repeat(3,1fr); gap:20px}}
@@ -154,8 +159,8 @@ def inject_css():
       .cat-ic{{width:54px;height:54px;border-radius:16px;background:#ffffff2b;
         display:flex;align-items:center;justify-content:center}}
       .cat-ic svg{{width:27px;height:27px;color:#fff}}
-      .cat-name{{font-size:1.36rem;font-weight:800;letter-spacing:-.02em}}
-      .cat-desc{{font-size:1.02rem;color:#ffffffd6;font-weight:500}}
+      .cat-name{{font-size:1.36rem;font-weight:800;letter-spacing:-.02em;color:#ffffff}}
+      .cat-desc{{font-size:1.02rem;color:#ffffff;font-weight:500;opacity:.92}}
       .cat-card .arw{{position:absolute;right:24px;bottom:22px;font-size:1.4rem;opacity:.55;
         transition:transform .2s}}
       .cat-card:hover .arw{{transform:translateX(5px);opacity:.95}}
@@ -320,9 +325,8 @@ def hero(client):
     <div class="hero"><div class="gov-wrap"><div class="hero-inner">
       {art}
       <span class="eyebrow">대전광역시 · 어르신 복지</span>
-      <h1>어르신, 무엇을<br>도와드릴까요?</h1>
-      <p>말씀하거나 입력하시면 복지 서비스를 쉽게 안내해 드립니다.
-         모든 상담은 기기 안에서만 처리되어 안전하게 보호됩니다.</p>
+      <h1>어르신, 무엇을 도와드릴까요?</h1>
+      <p>말씀하거나 입력하시면 복지 서비스를 쉽게 안내해 드립니다. 모든 상담은 안전하게 보호됩니다.</p>
     </div></div></div>
     """, unsafe_allow_html=True)
 
@@ -349,16 +353,7 @@ def hero(client):
                         st.audio(audio, format="audio/mp4",
                                  autoplay=(audio == st.session_state.get("latest_audio")))
 
-        mic = st.audio_input("마이크로 말씀하세요", key="mic",
-                             label_visibility="collapsed")
-        if mic is not None:
-            data = mic.getvalue(); fp = hash(data)
-            if data and st.session_state.get("last_mic") != fp:
-                st.session_state["last_mic"] = fp
-                with st.spinner("음성을 인식하는 중…"):
-                    ask_audio(client, data)
-                st.rerun()
-        if p := st.chat_input("여기에 입력하세요…"):
+        if p := st.chat_input("여기에 궁금하신 내용을 입력하세요…"):
             ask_text(client, p); st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
