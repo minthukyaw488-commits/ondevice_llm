@@ -54,6 +54,10 @@ ollama pull llama3.1        # 또는 qwen2.5
 # 터미널 데모
 python demo_cli.py
 
+# 데스크톱 앱 (태블릿·PC·미니PC, 어르신용 권장) - 브라우저 탭이 아니라
+# 전체화면 앱 창으로 실행됩니다. 코드는 그대로이고 창만 감싸는 방식입니다.
+python desktop_app.py
+
 # 웹 데모 (Gradio, 권장) - 하나의 입력창에서 음성·텍스트 모두 지원,
 # 음성으로 답변까지(voice-to-voice). 관리자 탭에서 이상신호 모니터링.
 python app_gradio.py
