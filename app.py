@@ -54,96 +54,141 @@ def inject_css():
     scale = st.session_state.get("font_scale", 1.0)
     hc = st.session_state.get("high_contrast", False)
     base = 17 * scale
-    ink = "#0a0a0a" if hc else "#1b2733"
-    navy = "#0b2e63"
-    navy2 = "#103a7d"
-    accent = "#1a56b0"
-    line = "#000000" if hc else "#d6dde6"
-    card_bd = "#000000" if hc else "#e2e8f2"
+    navy = "#0f2f6f"                       # brand
+    navy2 = "#0a2350"                      # deep
+    accent = "#2f6bff"                     # vivid CTA blue
+    ink = "#000000" if hc else "#15233d"
+    muted = "#334155" if hc else "#5c6b86"
+    bg = "#ffffff" if hc else "#eef2f9"    # cool light ground
+    surface = "#ffffff"
+    surface2 = "#f5f8fd"
+    line = "#000000" if hc else "#e6ebf4"
+    card_bd = "#000000" if hc else "#e8edf7"
     st.markdown(f"""
     <style>
+      @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+
       #MainMenu, header[data-testid="stHeader"], footer {{visibility:hidden; height:0}}
       .block-container{{padding:0 !important; max-width:100% !important}}
-      html, body, [class*="css"]{{font-size:{base}px;
-        font-family:'Malgun Gothic','Noto Sans KR',sans-serif; color:{ink}}}
-      .gov-wrap{{max-width:1120px; margin:0 auto; padding:0 20px}}
+      .stApp{{background:{bg}}}
+      html, body, [class*="css"], .stApp{{font-size:{base}px;
+        font-family:'Pretendard','Pretendard Variable',-apple-system,'Noto Sans KR',sans-serif;
+        color:{ink}; -webkit-font-smoothing:antialiased}}
+      .gov-wrap{{max-width:1140px; margin:0 auto; padding:0 24px}}
 
       /* top utility bar */
-      .util{{background:{navy}; color:#dfe7f5; font-size:.8rem}}
-      .util .gov-wrap{{display:flex; justify-content:flex-end; gap:18px; padding:7px 20px}}
+      .util{{background:{navy2}; color:#c7d4ee; font-size:.82rem}}
+      .util .gov-wrap{{display:flex; justify-content:flex-end; gap:22px; padding:9px 24px}}
+      .util span{{opacity:.85; cursor:pointer}} .util span:hover{{opacity:1;color:#fff}}
 
-      /* main header + nav */
-      .gnav{{background:#fff; border-bottom:3px solid {navy}}}
-      .gnav .row{{display:flex; align-items:center; justify-content:space-between; padding:16px 20px}}
-      .brand{{display:flex; align-items:center; gap:12px; font-weight:800; color:{navy};
-        font-size:1.5rem; letter-spacing:-.02em}}
-      .brand .seal{{width:40px;height:40px;border-radius:50%;background:{navy};
-        display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.3rem}}
-      .menu{{display:flex; gap:28px; font-weight:700; color:{ink}; font-size:1.05rem}}
-      .menu span{{padding:6px 0; border-bottom:3px solid transparent; cursor:pointer}}
-      .menu span:hover{{border-bottom-color:{accent}; color:{accent}}}
+      /* header + nav */
+      .gnav{{background:rgba(255,255,255,.9); backdrop-filter:saturate(1.4) blur(8px);
+        border-bottom:1px solid {line}; position:sticky; top:0; z-index:50}}
+      .gnav .row{{display:flex; align-items:center; justify-content:space-between; padding:16px 24px}}
+      .brand{{display:flex; align-items:center; gap:13px; font-weight:800; color:{navy};
+        font-size:1.45rem; letter-spacing:-.03em}}
+      .brand .seal{{width:42px;height:42px;border-radius:13px;
+        background:linear-gradient(140deg,{accent},{navy}); color:#fff;
+        display:flex;align-items:center;justify-content:center;font-size:1.25rem;
+        box-shadow:0 6px 16px -4px {accent}66}}
+      .menu{{display:flex; gap:8px; font-weight:600; font-size:1.02rem}}
+      .menu span{{padding:9px 15px; border-radius:11px; color:{muted}; cursor:pointer;
+        transition:all .15s}}
+      .menu span:hover{{background:{surface2}; color:{navy}}}
 
       /* hero */
-      .hero{{background:linear-gradient(135deg,{navy} 0%,{navy2} 60%,{accent} 130%); color:#fff}}
-      .hero .gov-wrap{{padding:40px 20px 30px}}
-      .hero h1{{font-size:2.2rem; font-weight:800; margin:0 0 8px; letter-spacing:-.02em}}
-      .hero p{{font-size:1.15rem; color:#dbe6fb; margin:0 0 22px}}
+      .hero .gov-wrap{{padding:30px 24px 34px}}
+      .hero-inner{{border-radius:26px; padding:48px 46px; color:#fff; position:relative;
+        overflow:hidden;
+        background:
+          radial-gradient(130% 120% at 12% 8%, {accent}55, transparent 55%),
+          radial-gradient(120% 130% at 92% 100%, #7aa0ff44, transparent 50%),
+          linear-gradient(135deg, {navy} 0%, {navy2} 100%);
+        box-shadow:0 30px 60px -24px {navy}80}}
+      .hero .eyebrow{{display:inline-block; font-size:.82rem; font-weight:700;
+        letter-spacing:.14em; text-transform:uppercase; color:#bcd0ff;
+        background:#ffffff1f; padding:6px 14px; border-radius:999px; margin-bottom:18px}}
+      .hero h1{{font-size:2.55rem; font-weight:800; margin:0 0 12px; letter-spacing:-.035em;
+        line-height:1.18}}
+      .hero p{{font-size:1.18rem; color:#d7e2fb; margin:0; max-width:60ch; line-height:1.6}}
 
       /* section */
-      .sec{{padding:36px 0}}
-      .sec h2{{font-size:1.6rem; font-weight:800; color:{navy}; margin:0 0 4px}}
-      .sec .sub{{color:#5b6b7d; margin:0 0 22px; font-size:1rem}}
-      .sec.alt{{background:#f2f5fa}}
+      .sec{{padding:44px 0}}
+      .sec.alt{{background:{surface2}}}
+      .sec h2{{font-size:1.72rem; font-weight:800; color:{ink}; margin:0 0 6px;
+        letter-spacing:-.03em}}
+      .sec .sub{{color:{muted}; margin:0 0 26px; font-size:1.05rem}}
 
-      /* category cards (rendered via buttons) */
+      /* category cards (Streamlit buttons) */
       div[data-testid="stButton"] > button{{
-        width:100%; min-height:118px; border:2px solid {card_bd}; border-radius:16px;
-        background:#fff; color:{ink}; font-size:1.15rem; font-weight:800;
-        box-shadow:0 2px 10px rgba(11,46,99,.06); line-height:1.5; white-space:pre-line;
-        transition:all .15s}}
+        width:100%; min-height:132px; border:1px solid {card_bd}; border-radius:20px;
+        background:{surface}; color:{ink}; font-size:1.18rem; font-weight:700;
+        line-height:1.55; white-space:pre-line; letter-spacing:-.01em;
+        box-shadow:0 1px 2px rgba(16,35,61,.05), 0 16px 32px -18px {navy}33;
+        transition:transform .18s cubic-bezier(.2,.7,.3,1), box-shadow .18s, border-color .18s}}
       div[data-testid="stButton"] > button:hover{{border-color:{accent};
-        box-shadow:0 8px 22px rgba(11,46,99,.16); transform:translateY(-2px); color:{navy}}}
+        box-shadow:0 1px 2px rgba(16,35,61,.05), 0 24px 44px -18px {accent}55;
+        transform:translateY(-4px); color:{navy}}}
+      div[data-testid="stButton"] > button:active{{transform:translateY(-1px)}}
+      /* primary buttons (CTA / voice) */
+      .stButton button[kind="primary"], .stButton button[kind="primaryFormSubmit"]{{
+        min-height:0; background:linear-gradient(135deg,{accent},{navy});
+        border:none; color:#fff; box-shadow:0 12px 24px -10px {accent}88}}
+      .stButton button[kind="primary"]:hover{{transform:translateY(-2px); color:#fff;
+        box-shadow:0 18px 32px -10px {accent}aa}}
 
-      /* AI assistant card */
-      .ai-card{{background:#fff; border:2px solid {card_bd}; border-radius:18px;
-        padding:10px 18px 4px; box-shadow:0 10px 30px rgba(11,46,99,.10)}}
-      .ai-head{{display:flex; align-items:center; gap:10px; font-weight:800; color:{navy};
-        font-size:1.3rem; padding:8px 2px}}
-      .stChatMessage{{font-size:1.05rem}}
+      /* AI assistant */
+      .ai-head{{display:flex; align-items:center; gap:11px; font-weight:800; color:{navy};
+        font-size:1.42rem; padding:6px 2px 12px; letter-spacing:-.02em}}
+      .stChatMessage{{font-size:1.06rem; border-radius:16px}}
+      .stTextInput input{{border-radius:12px !important; border:1px solid {card_bd} !important;
+        font-size:1.05rem !important}}
+      [data-testid="stChatInput"]{{border-radius:14px}}
 
       /* chips */
-      .chips{{display:flex; flex-wrap:wrap; gap:10px}}
-      .chip{{background:#fff; border:2px solid {card_bd}; border-radius:999px;
-        padding:9px 18px; font-weight:700; color:{navy}; font-size:1rem}}
+      .chips{{display:flex; flex-wrap:wrap; gap:11px}}
+      .chip{{background:{surface}; border:1px solid {card_bd}; border-radius:999px;
+        padding:11px 20px; font-weight:600; color:{navy}; font-size:1.02rem;
+        box-shadow:0 1px 2px rgba(16,35,61,.04); transition:all .15s}}
+      .chip:hover{{border-color:{accent}; color:{accent}; transform:translateY(-2px)}}
 
       /* notices */
-      .notice{{display:flex; gap:16px; padding:14px 4px; border-bottom:1px solid {line};
-        font-size:1.05rem}}
-      .notice .date{{color:#7c8ba0; font-variant-numeric:tabular-nums; min-width:100px}}
+      .notice{{display:flex; gap:16px; align-items:center; padding:15px 12px;
+        border-bottom:1px solid {line}; font-size:1.05rem; border-radius:12px;
+        transition:background .15s}}
+      .notice:hover{{background:{surface2}}}
+      .notice .date{{color:#8493ac; font-variant-numeric:tabular-nums; min-width:104px;
+        font-size:.95rem}}
       .notice .t{{font-weight:600; color:{ink}}}
-      .newtag{{background:#e12; color:#fff; font-size:.7rem; font-weight:800;
-        border-radius:5px; padding:1px 6px; margin-left:8px; vertical-align:middle}}
+      .newtag{{background:{accent}; color:#fff; font-size:.68rem; font-weight:800;
+        border-radius:6px; padding:2px 7px; margin-left:9px; vertical-align:middle;
+        letter-spacing:.05em}}
 
       /* footer */
-      .foot{{background:#0a2652; color:#c6d3ea; margin-top:20px}}
-      .foot .gov-wrap{{padding:30px 20px}}
-      .foot .cols{{display:flex; gap:40px; flex-wrap:wrap; margin-bottom:18px;
-        font-size:.95rem}}
-      .foot b{{color:#fff; display:block; margin-bottom:8px; font-size:1rem}}
-      .foot .copy{{border-top:1px solid #24457e; padding-top:16px; font-size:.85rem;
-        color:#8ea6cf}}
+      .foot{{background:linear-gradient(180deg,{navy2},#071a3d); color:#b9c8e6; margin-top:24px}}
+      .foot .gov-wrap{{padding:40px 24px 34px}}
+      .foot .cols{{display:flex; gap:48px; flex-wrap:wrap; margin-bottom:22px; font-size:.98rem;
+        line-height:1.9}}
+      .foot b{{color:#fff; display:block; margin-bottom:10px; font-size:1.02rem; font-weight:700}}
+      .foot .copy{{border-top:1px solid #ffffff1a; padding-top:18px; font-size:.86rem; color:#8195b8}}
 
       /* hands-free voice orb */
-      .orb{{width:170px;height:170px;border-radius:50%;margin:26px auto;
-        background:radial-gradient(circle at 50% 35%,#cdd6ff,#1a56b0 70%,{navy});
-        box-shadow:0 14px 44px rgba(11,46,99,.35)}}
-      .orb.listen{{animation:breathe 2.4s ease-in-out infinite}}
+      .orb{{width:184px;height:184px;border-radius:50%;margin:30px auto;
+        background:radial-gradient(circle at 42% 32%,#dfe7ff,{accent} 62%,{navy});
+        box-shadow:0 20px 60px -12px {accent}88, inset 0 -10px 30px #0a235066}}
+      .orb.listen{{animation:breathe 2.6s ease-in-out infinite}}
       .orb.think{{animation:spin 1.1s linear infinite}}
       .orb.speak{{animation:pulse .7s ease-in-out infinite}}
-      @keyframes breathe{{0%,100%{{transform:scale(1);opacity:.9}}50%{{transform:scale(1.06);opacity:1}}}}
-      @keyframes pulse{{0%,100%{{transform:scale(1)}}50%{{transform:scale(1.12)}}}}
+      @keyframes breathe{{0%,100%{{transform:scale(1);opacity:.92}}50%{{transform:scale(1.07);opacity:1}}}}
+      @keyframes pulse{{0%,100%{{transform:scale(1)}}50%{{transform:scale(1.13)}}}}
       @keyframes spin{{to{{transform:rotate(360deg)}}}}
-      .vstatus{{text-align:center;color:{navy};font-weight:800;font-size:1.25rem;margin-bottom:6px}}
+      .vstatus{{text-align:center;color:{navy};font-weight:800;font-size:1.3rem;margin-bottom:6px;
+        letter-spacing:-.02em}}
+
+      @media (prefers-reduced-motion:reduce){{
+        div[data-testid="stButton"] > button, .chip{{transition:none}}
+        .orb{{animation:none !important}}
+      }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -211,10 +256,12 @@ def header_nav():
 
 def hero(client):
     st.markdown("""
-    <div class="hero"><div class="gov-wrap">
-      <h1>어르신, 무엇을 도와드릴까요?</h1>
-      <p>말씀하거나 입력하시면 복지 서비스를 쉽게 안내해 드립니다. 모든 상담은 안전하게 보호됩니다.</p>
-    </div></div>
+    <div class="hero"><div class="gov-wrap"><div class="hero-inner">
+      <span class="eyebrow">대전광역시 · 어르신 복지</span>
+      <h1>어르신, 무엇을<br>도와드릴까요?</h1>
+      <p>말씀하거나 입력하시면 복지 서비스를 쉽게 안내해 드립니다.
+         모든 상담은 기기 안에서만 처리되어 안전하게 보호됩니다.</p>
+    </div></div></div>
     """, unsafe_allow_html=True)
 
     with st.container():
