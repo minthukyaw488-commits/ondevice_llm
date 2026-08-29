@@ -222,6 +222,11 @@ def hero(client):
         st.markdown('<div class="ai-head">🎙️ 음성 복지 상담 (AI 도우미)</div>',
                     unsafe_allow_html=True)
 
+        if st.button("🎙️ 음성으로 대화하기 (핸즈프리 · 버튼 없이 그냥 말하세요)",
+                     use_container_width=True, type="primary"):
+            st.session_state["mode"] = "voice"; st.rerun()
+        st.caption("↑ 마이크 버튼을 누를 필요 없이, 말하면 자동으로 알아듣고 답합니다.")
+
         # welfare search
         with st.form("search", clear_on_submit=True):
             c1, c2 = st.columns([5, 1])
@@ -465,7 +470,11 @@ def main():
             help=f"로컬 TTS: {get_tts().backend or '사용 불가'}")
         st.divider()
         view = st.radio("화면", ["🏛️ 복지포털 (어르신)", "🧑‍⚕️ 관리자"])
-        mode = st.radio("상담 방식", ["💬 텍스트·검색", "🎙️ 음성 대화 (핸즈프리)"])
+        st.caption("상담 방식")
+        if st.button("💬 텍스트·검색", use_container_width=True):
+            st.session_state["mode"] = "text"; st.rerun()
+        if st.button("🎙️ 음성 대화 (핸즈프리)", use_container_width=True):
+            st.session_state["mode"] = "voice"; st.rerun()
         if st.button("🔄 대화 초기화", use_container_width=True):
             st.session_state["state"] = client.reset()
             st.session_state["chat"] = []
@@ -479,7 +488,7 @@ def main():
         header_nav()
         admin_view(client)
         footer()
-    elif mode.startswith("🎙️"):
+    elif st.session_state.get("mode") == "voice":
         header_nav()
         voice_conversation(client)   # hands-free ChatGPT-style voice loop
     else:
