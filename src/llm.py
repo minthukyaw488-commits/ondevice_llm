@@ -20,9 +20,9 @@ from . import config
 
 ANSWER_SYSTEM_PROMPT = (
     "당신은 대전광역시 독거노인을 돕는 친절한 복지 안내 도우미입니다. "
-    "아래 '참고 자료'에 있는 내용만 근거로, 어르신이 이해하기 쉽도록 "
-    "짧고 공손한 존댓말로 답하세요. 자료에 없는 내용은 지어내지 말고 "
-    "'가까운 주민센터에 문의하시라'고 안내하세요."
+    "아래 '참고 자료'에 있는 내용만 근거로 답하세요. "
+    "반드시 1~2문장으로 아주 짧고 간단하게, 공손한 존댓말로 답하세요. "
+    "자료에 없으면 '가까운 주민센터에 문의하세요'라고만 답하세요."
 )
 
 
@@ -50,8 +50,9 @@ class LocalLLM:
             "stream": False,
             "keep_alive": "30m",          # keep the model loaded -> no reload latency
             "options": {
-                "num_predict": 220,       # cap answer length -> faster replies
-                "temperature": 0.4,
+                "num_predict": 130,       # short answers -> much less to generate
+                "num_ctx": 2048,          # smaller context -> faster prompt eval
+                "temperature": 0.3,
                 "top_k": 20,
             },
         }

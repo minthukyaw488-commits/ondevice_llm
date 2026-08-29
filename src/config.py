@@ -26,7 +26,7 @@ CHROMA_COLLECTION = "daejeon_welfare"
 # Chunking: welfare PDFs can be long, so split into small overlapping chunks.
 CHUNK_SIZE = 400          # target characters per chunk (200-500 range)
 CHUNK_OVERLAP = 80        # characters shared between neighbouring chunks
-RAG_TOP_K = 3             # how many chunks to retrieve per question
+RAG_TOP_K = 2             # fewer chunks -> shorter prompt -> faster LLM reply
 
 # --- Local LLM (Ollama) --------------------------------------------------
 # Runs fully on-device via the Ollama server (http://localhost:11434).
