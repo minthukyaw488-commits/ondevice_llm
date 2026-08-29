@@ -328,6 +328,10 @@ def voice_conversation(client):
         return
 
     st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
+    if st.button("◀ 복지포털 홈으로 돌아가기", use_container_width=True, type="primary"):
+        st.session_state["mode"] = "text"
+        st.rerun()
+    st.caption("대화 중이면 먼저 아래 **STOP**을 누른 뒤 이 버튼을 눌러 주세요.")
     st.markdown('<h2>🎙️ 음성 대화 (AI 도우미)</h2>'
                 '<p class="sub">마이크를 켜고 그냥 말씀하세요. 말이 끝나면 자동으로 답합니다. '
                 '(🎧 이어폰 사용 권장 · 실험 기능)</p>', unsafe_allow_html=True)
