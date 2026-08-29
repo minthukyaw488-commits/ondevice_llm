@@ -16,18 +16,29 @@ from src import config
 from src.tts import TextToSpeech
 from src.worker import AssistantClient
 
-st.set_page_config(page_title="대전광역시 복지포털", page_icon="🏛️", layout="wide",
+st.set_page_config(page_title="대전광역시 복지포털", layout="wide",
                    initial_sidebar_state="expanded")
 
 # --- service categories & content ----------------------------------------
+# (name, desc, color, icon-key, question) - no emoji, no red.
 CATEGORIES = [
-    ("💰", "기초연금", "매월 연금 지원", "기초연금은 어떻게 신청하나요?"),
-    ("🤝", "노인맞춤돌봄", "생활지원사 방문·안부", "노인맞춤돌봄서비스를 받고 싶어요"),
-    ("🩺", "방문건강관리", "간호사 가정 방문", "집에서 혈압 건강관리 받고 싶어요"),
-    ("🧠", "치매안심", "무료 검진·상담", "치매 검진 무료로 받고 싶어요"),
-    ("🚨", "응급안전안심", "화재·응급 감지기", "혼자 사는데 응급상황이 걱정돼요"),
-    ("👷", "노인일자리", "일자리·사회활동", "노인 일자리를 구하고 싶어요"),
+    ("기초연금", "매월 연금을 지원합니다", "#2563eb", "coin", "기초연금은 어떻게 신청하나요?"),
+    ("노인맞춤돌봄", "생활지원사 방문·안부", "#4f46e5", "care", "노인맞춤돌봄서비스를 받고 싶어요"),
+    ("방문건강관리", "간호사 가정 방문", "#0d9488", "cross", "집에서 혈압 건강관리 받고 싶어요"),
+    ("치매안심", "무료 검진·상담", "#0284c7", "bulb", "치매 검진 무료로 받고 싶어요"),
+    ("응급안전안심", "화재·응급 감지", "#0f766e", "shield", "혼자 사는데 응급상황이 걱정돼요"),
+    ("노인일자리", "일자리·사회활동", "#7c3aed", "case", "노인 일자리를 구하고 싶어요"),
 ]
+_S = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'
+      ' stroke-linecap="round" stroke-linejoin="round">')
+ICONS = {
+    "coin": f'{_S}<circle cx="12" cy="12" r="9"/><path d="M9 9l3 5 3-5"/><path d="M8 12h8"/></svg>',
+    "care": f'{_S}<path d="M12 20s-6.5-4.3-6.5-9A3.5 3.5 0 0112 8a3.5 3.5 0 016.5 3c0 4.7-6.5 9-6.5 9z"/></svg>',
+    "cross": f'{_S}<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg>',
+    "bulb": f'{_S}<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 00-3.5 10.9c.3.3.5.7.5 1.1v.5h6v-.5c0-.4.2-.8.5-1.1A6 6 0 0012 3z"/></svg>',
+    "shield": f'{_S}<path d="M12 3l7 3v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6z"/></svg>',
+    "case": f'{_S}<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M3 12h18"/></svg>',
+}
 POPULAR = ["기초연금", "치매 검진", "노인일자리", "에너지 바우처", "경로우대", "방문간호"]
 NOTICES = [
     ("2026-08-20", "2026년 기초연금 선정기준액 인상 안내"),
@@ -110,7 +121,12 @@ def inject_css():
         background:#ffffff1f; padding:6px 14px; border-radius:999px; margin-bottom:18px}}
       .hero h1{{font-size:2.55rem; font-weight:800; margin:0 0 12px; letter-spacing:-.035em;
         line-height:1.18}}
-      .hero p{{font-size:1.18rem; color:#d7e2fb; margin:0; max-width:60ch; line-height:1.6}}
+      .hero p{{font-size:1.18rem; color:#d7e2fb; margin:0; max-width:56ch; line-height:1.6;
+        position:relative; z-index:1}}
+      .hero .eyebrow, .hero h1{{position:relative; z-index:1}}
+      .hero-art{{position:absolute; right:20px; top:50%; transform:translateY(-50%);
+        width:230px; height:230px; opacity:.9; pointer-events:none}}
+      @media(max-width:820px){{.hero-art{{display:none}}}}
 
       /* section */
       .sec{{padding:44px 0}}
@@ -119,17 +135,44 @@ def inject_css():
         letter-spacing:-.03em}}
       .sec .sub{{color:{muted}; margin:0 0 26px; font-size:1.05rem}}
 
-      /* category cards (Streamlit buttons) */
+      /* header row (brand | search | nav) */
+      .brand-svg{{width:24px;height:24px;color:#fff}}
+      .menu{{justify-content:flex-end}}
+
+      /* colored category cards */
+      .cat-grid{{display:grid; grid-template-columns:repeat(3,1fr); gap:20px}}
+      .cat-card{{display:flex; flex-direction:column; gap:12px; min-height:172px;
+        padding:26px 24px; border-radius:22px; text-decoration:none; color:#fff;
+        background:var(--c); background-image:linear-gradient(150deg,#ffffff22,#0000001f);
+        box-shadow:0 20px 38px -18px var(--c); position:relative; overflow:hidden;
+        transition:transform .22s cubic-bezier(.2,.7,.3,1), box-shadow .22s;
+        animation:fadeUp .55s both}}
+      .cat-card:hover{{transform:translateY(-6px); box-shadow:0 30px 54px -18px var(--c)}}
+      .cat-card:nth-child(2){{animation-delay:.05s}} .cat-card:nth-child(3){{animation-delay:.1s}}
+      .cat-card:nth-child(4){{animation-delay:.15s}} .cat-card:nth-child(5){{animation-delay:.2s}}
+      .cat-card:nth-child(6){{animation-delay:.25s}}
+      .cat-ic{{width:54px;height:54px;border-radius:16px;background:#ffffff2b;
+        display:flex;align-items:center;justify-content:center}}
+      .cat-ic svg{{width:27px;height:27px;color:#fff}}
+      .cat-name{{font-size:1.36rem;font-weight:800;letter-spacing:-.02em}}
+      .cat-desc{{font-size:1.02rem;color:#ffffffd6;font-weight:500}}
+      .cat-card .arw{{position:absolute;right:24px;bottom:22px;font-size:1.4rem;opacity:.55;
+        transition:transform .2s}}
+      .cat-card:hover .arw{{transform:translateX(5px);opacity:.95}}
+      @media(max-width:920px){{.cat-grid{{grid-template-columns:repeat(2,1fr)}}}}
+      @media(max-width:560px){{.cat-grid{{grid-template-columns:1fr}}}}
+      @keyframes fadeUp{{from{{opacity:0;transform:translateY(16px)}}to{{opacity:1;transform:none}}}}
+      .hero-inner{{animation:fadeUp .6s both}}
+
+      /* general Streamlit buttons */
       div[data-testid="stButton"] > button{{
-        width:100%; min-height:132px; border:1px solid {card_bd}; border-radius:20px;
-        background:{surface}; color:{ink}; font-size:1.18rem; font-weight:700;
-        line-height:1.55; white-space:pre-line; letter-spacing:-.01em;
-        box-shadow:0 1px 2px rgba(16,35,61,.05), 0 16px 32px -18px {navy}33;
-        transition:transform .18s cubic-bezier(.2,.7,.3,1), box-shadow .18s, border-color .18s}}
+        border:1px solid {card_bd}; border-radius:13px; background:{surface}; color:{ink};
+        font-size:1.02rem; font-weight:700; padding:.7rem 1.15rem; letter-spacing:-.01em;
+        box-shadow:0 1px 2px rgba(16,35,61,.05);
+        transition:transform .16s, box-shadow .16s, border-color .16s}}
       div[data-testid="stButton"] > button:hover{{border-color:{accent};
-        box-shadow:0 1px 2px rgba(16,35,61,.05), 0 24px 44px -18px {accent}55;
-        transform:translateY(-4px); color:{navy}}}
-      div[data-testid="stButton"] > button:active{{transform:translateY(-1px)}}
+        transform:translateY(-2px); color:{navy};
+        box-shadow:0 10px 22px -12px {accent}66}}
       /* primary buttons (CTA / voice) */
       .stButton button[kind="primary"], .stButton button[kind="primaryFormSubmit"]{{
         min-height:0; background:linear-gradient(135deg,{accent},{navy});
@@ -239,24 +282,43 @@ def ask_audio(client, wav: bytes):
 # --------------------------------------------------------------------------
 # Portal sections
 # --------------------------------------------------------------------------
-def header_nav():
-    st.markdown("""
-    <div class="util"><div class="gov-wrap">
-      <span>로그인</span><span>회원가입</span><span>사이트맵</span><span>English</span>
-    </div></div>
-    <div class="gnav"><div class="gov-wrap"><div class="row">
-      <div class="brand"><span class="seal">🏛️</span> 대전광역시 복지포털</div>
-      <div class="menu">
-        <span>복지서비스</span><span>건강·의료</span><span>어르신 돌봄</span>
-        <span>공지사항</span><span>상담·문의</span>
-      </div>
-    </div></div></div>
-    """, unsafe_allow_html=True)
+def header_nav(client):
+    st.markdown(
+        '<div class="util"><div class="gov-wrap">'
+        '<span>로그인</span><span>회원가입</span><span>사이트맵</span><span>English</span>'
+        '</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="gov-wrap" style="padding-top:14px;padding-bottom:6px">',
+                unsafe_allow_html=True)
+    b, s, n = st.columns([1.55, 2.05, 2.2], vertical_alignment="center")
+    seal = ('<span class="seal"><svg class="brand-svg" viewBox="0 0 24 24" fill="none" '
+            'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+            'stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/>'
+            '<path d="M9 21v-5h6v5"/></svg></span>')
+    b.markdown(f'<div class="brand">{seal} 대전광역시 복지포털</div>', unsafe_allow_html=True)
+    with s:
+        with st.form("hdr_search", clear_on_submit=True):
+            sc1, sc2 = st.columns([3, 1])
+            q = sc1.text_input("검색", placeholder="복지 서비스 검색",
+                               label_visibility="collapsed")
+            go = sc2.form_submit_button("검색", use_container_width=True)
+        if go and q.strip():
+            ask_text(client, q.strip()); st.rerun()
+    n.markdown('<div class="menu"><span>복지서비스</span><span>건강·의료</span>'
+               '<span>어르신 돌봄</span><span>공지사항</span><span>상담·문의</span></div>',
+               unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def hero(client):
-    st.markdown("""
+    art = ('<div class="hero-art"><svg viewBox="0 0 220 220" fill="none" '
+           'stroke="#ffffff" stroke-opacity=".55" stroke-width="2">'
+           '<circle cx="150" cy="90" r="70"/><circle cx="150" cy="90" r="48"/>'
+           '<circle cx="150" cy="90" r="26"/>'
+           '<path d="M40 150c30-10 60-10 90 0" stroke-opacity=".35"/>'
+           '<path d="M30 170c40-14 90-14 130 0" stroke-opacity=".25"/></svg></div>')
+    st.markdown(f"""
     <div class="hero"><div class="gov-wrap"><div class="hero-inner">
+      {art}
       <span class="eyebrow">대전광역시 · 어르신 복지</span>
       <h1>어르신, 무엇을<br>도와드릴까요?</h1>
       <p>말씀하거나 입력하시면 복지 서비스를 쉽게 안내해 드립니다.
@@ -266,22 +328,13 @@ def hero(client):
 
     with st.container():
         st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
-        st.markdown('<div class="ai-head">🎙️ 음성 복지 상담 (AI 도우미)</div>',
+        st.markdown('<div class="ai-head">음성·문자 복지 상담 (AI 도우미)</div>',
                     unsafe_allow_html=True)
 
-        if st.button("🎙️ 음성으로 대화하기 (핸즈프리 · 버튼 없이 그냥 말하세요)",
+        if st.button("음성으로 대화하기  ·  버튼 없이 그냥 말하세요",
                      use_container_width=True, type="primary"):
             st.session_state["mode"] = "voice"; st.rerun()
-        st.caption("↑ 마이크 버튼을 누를 필요 없이, 말하면 자동으로 알아듣고 답합니다.")
-
-        # welfare search
-        with st.form("search", clear_on_submit=True):
-            c1, c2 = st.columns([5, 1])
-            q = c1.text_input("복지 검색", placeholder="예) 기초연금 신청 방법",
-                              label_visibility="collapsed")
-            go = c2.form_submit_button("🔍 검색", use_container_width=True)
-        if go and q.strip():
-            ask_text(client, q.strip()); st.rerun()
+        st.caption("마이크 버튼을 누르지 않아도, 말하면 자동으로 알아듣고 답합니다.")
 
         # conversation
         for msg in st.session_state["chat"][-6:]:
@@ -296,7 +349,7 @@ def hero(client):
                         st.audio(audio, format="audio/mp4",
                                  autoplay=(audio == st.session_state.get("latest_audio")))
 
-        mic = st.audio_input("🎤 마이크로 말씀하세요", key="mic",
+        mic = st.audio_input("마이크로 말씀하세요", key="mic",
                              label_visibility="collapsed")
         if mic is not None:
             data = mic.getvalue(); fp = hash(data)
@@ -311,16 +364,20 @@ def hero(client):
 
 
 def category_cards(client):
-    st.markdown('<div class="sec alt"><div class="gov-wrap">', unsafe_allow_html=True)
-    st.markdown('<h2>복지 서비스 바로가기</h2>'
-                '<p class="sub">필요하신 서비스를 선택하시면 AI 도우미가 안내해 드립니다.</p>',
-                unsafe_allow_html=True)
-    for row in range(0, len(CATEGORIES), 3):
-        cols = st.columns(3, gap="medium")
-        for col, (icon, name, desc, q) in zip(cols, CATEGORIES[row:row + 3]):
-            if col.button(f"{icon}\n{name}\n{desc}", key=f"cat_{name}"):
-                ask_text(client, q); st.rerun()
-    st.markdown('</div></div>', unsafe_allow_html=True)
+    from urllib.parse import quote
+    cards = ""
+    for name, desc, color, icon, q in CATEGORIES:
+        cards += (
+            f'<a class="cat-card" style="--c:{color}" href="?ask={quote(q)}" target="_self">'
+            f'<span class="cat-ic">{ICONS[icon]}</span>'
+            f'<span class="cat-name">{name}</span>'
+            f'<span class="cat-desc">{desc}</span>'
+            f'<span class="arw">→</span></a>')
+    st.markdown('<div class="sec alt"><div class="gov-wrap">'
+                '<h2>복지 서비스 바로가기</h2>'
+                '<p class="sub">필요하신 서비스를 선택하시면 AI 도우미가 안내해 드립니다.</p>'
+                f'<div class="cat-grid">{cards}</div>'
+                '</div></div>', unsafe_allow_html=True)
 
 
 def popular_and_notices():
@@ -375,13 +432,13 @@ def voice_conversation(client):
         return
 
     st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
-    if st.button("◀ 복지포털 홈으로 돌아가기", use_container_width=True, type="primary"):
+    if st.button("← 복지포털 홈으로 돌아가기", use_container_width=True, type="primary"):
         st.session_state["mode"] = "text"
         st.rerun()
-    st.caption("대화 중이면 먼저 아래 **STOP**을 누른 뒤 이 버튼을 눌러 주세요.")
-    st.markdown('<h2>🎙️ 음성 대화 (AI 도우미)</h2>'
+    st.caption("대화 중이면 먼저 아래 STOP을 누른 뒤 이 버튼을 눌러 주세요.")
+    st.markdown('<h2>음성 대화 (AI 도우미)</h2>'
                 '<p class="sub">마이크를 켜고 그냥 말씀하세요. 말이 끝나면 자동으로 답합니다. '
-                '(🎧 이어폰 사용 권장 · 실험 기능)</p>', unsafe_allow_html=True)
+                '(이어폰 사용 권장 · 실험 기능)</p>', unsafe_allow_html=True)
 
     class VP:
         def __init__(self):
@@ -461,7 +518,7 @@ def voice_conversation(client):
         orbset("think", "생각 중…")
         r = client.ask(text)
         if "error" in r:
-            st.session_state["vchat"].append(("assistant", f"⚠️ {r['error']}"))
+            st.session_state["vchat"].append(("assistant", f"[오류] {r['error']}"))
             render(); drain(proc); orbset("listen", "듣고 있어요…"); continue
 
         st.session_state["vchat"].append(("user", r["question"]))
@@ -491,13 +548,13 @@ def voice_conversation(client):
 
 def admin_view(client):
     st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
-    st.markdown('<h2>🧑‍⚕️ 관리자 · 이상신호 모니터</h2>'
+    st.markdown('<h2>관리자 · 이상신호 모니터</h2>'
                 '<p class="sub">어르신 화면에는 보이지 않는 배경 모니터링입니다.</p>',
                 unsafe_allow_html=True)
     s = st.session_state["state"]
     c1, c2, c3 = st.columns(3)
-    status = ("🚨 긴급" if s.get("crisis") else
-              "⚠️ 주의" if s.get("is_abnormal") else "✅ 정상")
+    status = ("긴급 확인" if s.get("crisis") else
+              "주의" if s.get("is_abnormal") else "정상")
     c1.metric("상태", status)
     c2.metric("평균 부정감정", f"{s.get('avg_negative', 0.0):.2f}")
     c3.metric("대화 횟수", f"{s.get('history_len', 0)}회")
@@ -512,10 +569,10 @@ def admin_view(client):
         cc[2].metric("외로움 표현", f"+{m['keyword_shift']:.0%}")
         cc[3].metric("응답 길이", f"-{m['length_drop']:.0%}")
     st.divider()
-    st.markdown("#### 🔔 사회복지사 알림 로그")
+    st.markdown("#### 사회복지사 알림 로그")
     if st.session_state["alerts"]:
         for urgency, text in st.session_state["alerts"]:
-            st.error(f"[{urgency}]\n\n{text}") if urgency == "긴급" else st.warning(text)
+            st.warning(f"[{urgency}]\n\n{text}")
     else:
         st.caption("아직 알림이 없습니다.")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -530,8 +587,15 @@ def main():
     st.session_state.setdefault("font_scale", 1.0)
     st.session_state.setdefault("voice_mode", False)
 
+    # A category card links to ?ask=<question>; handle it, then clear the param.
+    if "ask" in st.query_params:
+        q = st.query_params["ask"]
+        st.query_params.clear()
+        if q.strip():
+            ask_text(client, q.strip())
+
     with st.sidebar:
-        st.subheader("♿ 화면 설정")
+        st.subheader("화면 설정")
         st.caption("글자 크기")
         b1, b2, b3 = st.columns(3)
         if b1.button("가", use_container_width=True):
@@ -543,16 +607,16 @@ def main():
         st.session_state["high_contrast"] = st.toggle(
             "고대비 모드", value=st.session_state.get("high_contrast", False))
         st.session_state["voice_mode"] = st.toggle(
-            "🔊 음성으로 답변 듣기", value=st.session_state.get("voice_mode", False),
+            "음성으로 답변 듣기", value=st.session_state.get("voice_mode", False),
             help=f"로컬 TTS: {get_tts().backend or '사용 불가'}")
         st.divider()
-        view = st.radio("화면", ["🏛️ 복지포털 (어르신)", "🧑‍⚕️ 관리자"])
+        view = st.radio("화면", ["복지포털 (어르신)", "관리자"])
         st.caption("상담 방식")
-        if st.button("💬 텍스트·검색", use_container_width=True):
+        if st.button("텍스트·검색", use_container_width=True):
             st.session_state["mode"] = "text"; st.rerun()
-        if st.button("🎙️ 음성 대화 (핸즈프리)", use_container_width=True):
+        if st.button("음성 대화 (핸즈프리)", use_container_width=True):
             st.session_state["mode"] = "voice"; st.rerun()
-        if st.button("🔄 대화 초기화", use_container_width=True):
+        if st.button("대화 초기화", use_container_width=True):
             st.session_state["state"] = client.reset()
             st.session_state["chat"] = []
             st.session_state["alerts"] = []
@@ -561,15 +625,15 @@ def main():
 
     inject_css()
 
-    if view.startswith("🧑"):
-        header_nav()
+    if view == "관리자":
+        header_nav(client)
         admin_view(client)
         footer()
     elif st.session_state.get("mode") == "voice":
-        header_nav()
+        header_nav(client)
         voice_conversation(client)   # hands-free ChatGPT-style voice loop
     else:
-        header_nav()
+        header_nav(client)
         hero(client)
         category_cards(client)
         popular_and_notices()
