@@ -27,6 +27,11 @@ streamlit>=1.39          # (선택) Streamlit UI
 # `say` command (no install); pyttsx3 is the cross-platform fallback.
 pyttsx3>=2.90
 
+# --- Hands-free voice mode (experimental, app_voice.py) ---
+streamlit-webrtc>=0.47    # continuous in-browser mic streaming
+webrtcvad>=2.0            # voice-activity detection (auto start/stop of speech)
+setuptools<81            # webrtcvad imports pkg_resources
+
 # The local LLM runs via the Ollama server (installed separately):
 #   https://ollama.com  ->  `ollama pull llama3.1`  (or qwen2.5)
 # Ollama is a local process, NOT a cloud API.
