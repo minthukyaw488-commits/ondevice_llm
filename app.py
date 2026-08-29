@@ -314,6 +314,109 @@ def header_nav(client):
     st.markdown('</div>', unsafe_allow_html=True)
 
 
+def voice_orb(client):
+    """Hands-free voice conversation embedded at the top of the home page."""
+    import queue
+    import time
+    from pathlib import Path
+    try:
+        import av
+        import numpy as np
+        from streamlit_webrtc import WebRtcMode, webrtc_streamer
+        from src.vad_stream import UtteranceSegmenter
+    except Exception:
+        st.info("음성 대화 기능: pip install streamlit-webrtc webrtcvad 'setuptools<81'")
+        return
+
+    class VP:
+        def __init__(self):
+            self.seg = UtteranceSegmenter(aggressiveness=3, silence_ms=800, min_speech_ms=400)
+            self.res = av.AudioResampler(format="s16", layout="mono", rate=16000)
+            self.utterances = queue.Queue()
+
+        def recv(self, frame):
+            for f in self.res.resample(frame):
+                w = self.seg.add_pcm(f.to_ndarray().astype(np.int16).tobytes())
+                if w:
+                    self.utterances.put(w)
+            return frame
+
+    orb = st.empty()
+    status = st.empty()
+    ctx = webrtc_streamer(
+        key="home_voice", mode=WebRtcMode.SENDONLY, audio_processor_factory=VP,
+        media_stream_constraints={
+            "audio": {"echoCancellation": True, "noiseSuppression": True},
+            "video": False},
+        async_processing=True)
+    chat_ph = st.empty()
+    audio_ph = st.empty()
+    tts = get_tts()
+
+    def orbset(s, l):
+        orb.markdown(f'<div class="orb {s}"></div>', unsafe_allow_html=True)
+        status.markdown(f'<div class="vstatus">{l}</div>', unsafe_allow_html=True)
+
+    def render_chat():
+        with chat_ph.container():
+            for m in st.session_state["chat"][-6:]:
+                with st.chat_message("user" if m[0] == "user" else "assistant"):
+                    st.write(m[1])
+
+    render_chat()
+    if not ctx.state.playing:
+        orbset("listen", "위의 START를 눌러 음성으로 물어보세요. (또는 아래에 입력)")
+        return
+
+    NOISE = {"", ".", "..", "네", "음", "아", "감사합니다", "시청해주셔서 감사합니다",
+             "구독과 좋아요", "다음 영상에서 만나요", "고맙습니다", "수고하셨습니다"}
+
+    def drain(proc):
+        try:
+            while True:
+                proc.utterances.get_nowait()
+        except queue.Empty:
+            pass
+
+    orbset("listen", "듣고 있어요…")
+    while ctx.state.playing:
+        proc = ctx.audio_processor
+        if proc is None:
+            time.sleep(0.1); continue
+        try:
+            wav = proc.utterances.get(timeout=0.5)
+        except queue.Empty:
+            continue
+        Path("data/audio").mkdir(parents=True, exist_ok=True)
+        utt = Path("data/audio") / "home_utt.wav"
+        utt.write_bytes(wav)
+        text = (client.transcribe(str(utt)).get("text") or "").strip()
+        if len(text) < 2 or text in NOISE:
+            continue
+        orbset("think", "생각 중…")
+        r = client.ask(text)
+        if "error" in r:
+            drain(proc); orbset("listen", "듣고 있어요…"); continue
+        st.session_state["chat"].append(("user", r["question"]))
+        st.session_state["chat"].append(("bot", r["answer"], None))
+        st.session_state["state"] = r
+        if r.get("alert"):
+            st.session_state["alerts"].insert(
+                0, ("긴급" if r.get("crisis") else "주의", r["alert"]))
+        render_chat()
+        n = st.session_state.get("reply_n", 0) + 1
+        st.session_state["reply_n"] = n
+        audio = tts.synthesize(r["answer"], str(Path("data/audio") / f"vreply_{n}.m4a"))
+        if audio:
+            orbset("speak", "말하는 중…")
+            audio_ph.audio(audio, format="audio/mp4", autoplay=True)
+            end = time.time() + min(max(len(r["answer"]) * 0.09, 2.0), 12.0)
+            while time.time() < end:
+                drain(proc); time.sleep(0.15)
+        drain(proc)
+        orbset("listen", "듣고 있어요…")
+
+
 def hero(client):
     art = ('<div class="hero-art"><svg viewBox="0 0 220 220" fill="none" '
            'stroke="#ffffff" stroke-opacity=".55" stroke-width="2">'
@@ -330,32 +433,21 @@ def hero(client):
     </div></div></div>
     """, unsafe_allow_html=True)
 
-    with st.container():
-        st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
-        st.markdown('<div class="ai-head">음성·문자 복지 상담 (AI 도우미)</div>',
-                    unsafe_allow_html=True)
-
-        if st.button("음성으로 대화하기  ·  버튼 없이 그냥 말하세요",
-                     use_container_width=True, type="primary"):
-            st.session_state["mode"] = "voice"; st.rerun()
-        st.caption("마이크 버튼을 누르지 않아도, 말하면 자동으로 알아듣고 답합니다.")
-
-        # conversation
-        for msg in st.session_state["chat"][-6:]:
-            if msg[0] == "user":
-                with st.chat_message("user"):
-                    st.write(msg[1])
-            else:
-                with st.chat_message("assistant"):
-                    st.write(msg[1])
-                    audio = msg[2] if len(msg) > 2 else None
-                    if audio:
-                        st.audio(audio, format="audio/mp4",
-                                 autoplay=(audio == st.session_state.get("latest_audio")))
-
-        if p := st.chat_input("여기에 궁금하신 내용을 입력하세요…"):
-            ask_text(client, p); st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
+    st.markdown('<div class="ai-head">음성·문자 복지 상담 (AI 도우미)</div>',
+                unsafe_allow_html=True)
+    orb_slot = st.container()          # voice orb sits here (top), filled last
+    # text input (renders before the blocking voice loop, so it always shows)
+    with st.form("ai_text", clear_on_submit=True):
+        tc1, tc2 = st.columns([5, 1])
+        q = tc1.text_input("입력", placeholder="궁금하신 내용을 글로 입력하셔도 됩니다",
+                           label_visibility="collapsed")
+        go = tc2.form_submit_button("보내기", use_container_width=True)
+    if go and q.strip():
+        ask_text(client, q.strip()); st.rerun()
+    with orb_slot:
+        voice_orb(client)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def category_cards(client):
@@ -629,10 +721,16 @@ def main():
         voice_conversation(client)   # hands-free ChatGPT-style voice loop
     else:
         header_nav(client)
-        hero(client)
-        category_cards(client)
-        popular_and_notices()
-        footer()
+        # Container ordering: the hero holds a blocking voice loop, so render the
+        # sections BELOW it first (into a later container), then fill the hero.
+        hero_c = st.container()
+        lower_c = st.container()
+        with lower_c:
+            category_cards(client)
+            popular_and_notices()
+            footer()
+        with hero_c:
+            hero(client)
 
 
 if __name__ != "__mp_main__":
