@@ -12,6 +12,7 @@ retrieval logic can still be demonstrated offline.
 """
 from __future__ import annotations
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
@@ -48,7 +49,33 @@ def load_text_from_pdf(pdf_path: Path) -> str:
         ocr_text = _ocr_pdf_pages(pdf_path, scanned_pages)
         for i, text in ocr_text.items():
             parts[i] = text
+    parts = _strip_running_headers(parts)
     return "\n".join(parts)
+
+
+def _strip_running_headers(pages: List[str]) -> List[str]:
+    """Remove running headers/footers repeated across many pages.
+
+    Government booklets print the same short line (e.g. "힘이 되는 평생친구
+    보건복지부", section titles, page numbers) on most pages. A line that is
+    short and appears on a large fraction of pages is boilerplate, not content,
+    and it pollutes chunks/retrieval - so drop it.
+    """
+    n = len(pages)
+    if n < 4:
+        return pages
+    freq: Counter = Counter()
+    for p in pages:
+        for ln in {l.strip() for l in p.splitlines() if l.strip()}:
+            freq[ln] += 1
+    threshold = max(3, int(n * 0.2))
+    banned = {ln for ln, c in freq.items() if c >= threshold and len(ln) <= 40}
+    if not banned:
+        return pages
+    cleaned = []
+    for p in pages:
+        cleaned.append("\n".join(l for l in p.splitlines() if l.strip() not in banned))
+    return cleaned
 
 
 def _ocr_pdf_pages(pdf_path: Path, page_indices: List[int]) -> dict:
@@ -100,16 +127,93 @@ def load_documents(docs_dir: Path = config.WELFARE_DOCS_DIR) -> List[dict]:
 
 
 # --------------------------------------------------------------------------
+# Cleaning & section segmentation (real government PDFs are noisy)
+# --------------------------------------------------------------------------
+# Line starts that begin a new welfare item in Korean government documents.
+_SECTION_RE = re.compile(
+    r"^\s*(?:"
+    r"\d{1,2}[).]"            # 1)  1.
+    r"|[가-힣][).]"           # 가.  나)
+    r"|[①-⑳❶-❿]"             # circled numbers
+    r"|[○◦□■●▷▶◇◆❍]"         # bullet marks
+    r"|제\s*\d+\s*[조항]"      # 제1조 / 제2항
+    r"|[IVX]{1,4}\."          # roman numerals
+    r"|#{1,6}\s"              # markdown headings
+    r")")
+
+
+def clean_text(text: str) -> str:
+    """Normalise text and drop page-number / symbol-noise lines.
+
+    pdfplumber + OCR leave soft hyphens, zero-width chars, stray page numbers
+    and symbol-only lines that hurt embeddings. Strip them while keeping the
+    Korean content and line structure.
+    """
+    text = text.replace("­", "").replace("‑", "-")   # soft hyphens
+    text = re.sub(r"[​-‏﻿]", "", text)          # zero-width
+    text = re.sub(r"[ \t]+", " ", text)
+    out = []
+    for ln in text.split("\n"):
+        s = ln.strip()
+        if not s:
+            out.append("")
+            continue
+        if re.fullmatch(r"[-\s]*\d{1,4}[-\s]*", s):            # page-number line
+            continue
+        # a line that is almost all symbols (few Korean/알파벳/digits) is noise
+        content = len(re.findall(r"[0-9A-Za-z가-힣]", s))
+        if len(s) >= 4 and content / len(s) < 0.4:
+            continue
+        out.append(s)
+    return "\n".join(out)
+
+
+def segment_sections(text: str) -> str:
+    """Rebuild paragraph structure around section markers.
+
+    Extracted PDF text often lacks blank-line paragraph breaks, so a plain
+    window splits mid-sentence and mixes topics. Merge wrapped lines into a
+    block and start a new block at each numbered/bulleted welfare item, then
+    emit blank-line-separated paragraphs the chunker can group cleanly.
+    """
+    blocks: List[str] = []
+    cur: List[str] = []
+    for ln in text.split("\n"):
+        s = ln.strip()
+        if not s:
+            if cur:
+                blocks.append(" ".join(cur)); cur = []
+            continue
+        if _SECTION_RE.match(s) and cur:
+            blocks.append(" ".join(cur)); cur = [s]
+        else:
+            cur.append(s)
+    if cur:
+        blocks.append(" ".join(cur))
+    return "\n\n".join(b.strip() for b in blocks if b.strip())
+
+
+def is_low_quality(chunk: str) -> bool:
+    """Drop chunks that are too short or hold almost no Korean (tables/noise)."""
+    s = chunk.strip()
+    if len(s) < 30:
+        return True
+    korean = len(re.findall(r"[가-힣]", s))
+    return korean / len(s) < 0.15
+
+
+# --------------------------------------------------------------------------
 # Chunking
 # --------------------------------------------------------------------------
 def chunk_text(text: str,
                chunk_size: int = config.CHUNK_SIZE,
                overlap: int = config.CHUNK_OVERLAP) -> List[str]:
-    """Split text into overlapping chunks of ~chunk_size characters.
+    """Clean, segment, then split text into overlapping ~chunk_size chunks.
 
-    Tries to break on paragraph / sentence boundaries first, then falls back
-    to a sliding character window so no chunk exceeds the size limit.
+    Breaks on section/paragraph boundaries first, then falls back to a sliding
+    character window so no chunk exceeds the size limit.
     """
+    text = segment_sections(clean_text(text))
     text = re.sub(r"\n{3,}", "\n\n", text.strip())
     # Split on blank lines (paragraphs) as the natural welfare-item boundary.
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
@@ -206,11 +310,19 @@ class RagPipeline:
         """Load -> chunk -> embed -> store. Returns number of chunks indexed."""
         documents = load_documents(docs_dir)
         chunks, metadatas, ids = [], [], []
+        dropped = 0
         for doc in documents:
-            for i, chunk in enumerate(chunk_text(doc["text"])):
+            kept = 0
+            for chunk in chunk_text(doc["text"]):
+                if is_low_quality(chunk):
+                    dropped += 1
+                    continue
                 chunks.append(chunk)
-                metadatas.append({"source": doc["source"], "chunk": i})
-                ids.append(f"{doc['source']}::{i}")
+                metadatas.append({"source": doc["source"], "chunk": kept})
+                ids.append(f"{doc['source']}::{kept}")
+                kept += 1
+        if dropped:
+            print(f"[rag] dropped {dropped} low-quality chunk(s) (noise/tables).")
         if not chunks:
             return 0
         # Fit the embedder on the full corpus first (matters for the TF-IDF
