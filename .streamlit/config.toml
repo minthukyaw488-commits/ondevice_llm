@@ -7,3 +7,13 @@ fileWatcherType = "none"
 
 [browser]
 gatherUsageStats = false
+
+# Navy government palette. Streamlit's default primaryColor is red (#FF4B4B),
+# which tints the form "보내기" button and the streamlit-webrtc START button.
+# Custom components (incl. webrtc) receive this theme, so START turns navy too.
+[theme]
+primaryColor = "#0f2f6f"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#eef2f9"
+textColor = "#15233d"
+font = "sans serif"

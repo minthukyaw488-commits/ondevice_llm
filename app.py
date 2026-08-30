@@ -58,6 +58,26 @@ def get_tts():
     return TextToSpeech()
 
 
+@st.cache_data
+def hero_bg_css_value() -> str:
+    """Return a CSS value for the hero background image.
+
+    If an illustration is saved at ``assets/hero_bg.(png|jpg|jpeg|webp)`` it is
+    embedded as a data URI (works offline, no external host). Otherwise an empty
+    string is returned and the CSS falls back to the navy gradient only.
+    """
+    import base64
+    from pathlib import Path
+    root = Path(__file__).resolve().parent / "assets"
+    for name, mime in (("hero_bg.png", "image/png"), ("hero_bg.jpg", "image/jpeg"),
+                       ("hero_bg.jpeg", "image/jpeg"), ("hero_bg.webp", "image/webp")):
+        f = root / name
+        if f.exists():
+            b64 = base64.b64encode(f.read_bytes()).decode("ascii")
+            return f"url('data:{mime};base64,{b64}')"
+    return ""
+
+
 # --------------------------------------------------------------------------
 # Styling (navy public-service palette, large type, high contrast)
 # --------------------------------------------------------------------------
@@ -75,6 +95,8 @@ def inject_css():
     surface2 = "#f5f8fd"
     line = "#000000" if hc else "#e6ebf4"
     card_bd = "#000000" if hc else "#e8edf7"
+    hero_img = hero_bg_css_value()          # data-URI illustration, or "" (gradient only)
+    hero_layer = f"{hero_img}, " if hero_img else ""
     st.markdown(f"""
     <style>
       @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
@@ -107,26 +129,31 @@ def inject_css():
         transition:all .15s}}
       .menu span:hover{{background:{surface2}; color:{navy}}}
 
-      /* hero */
-      .hero .gov-wrap{{padding:22px 24px 20px}}
-      .hero-inner{{border-radius:22px; padding:30px 44px; color:#fff; position:relative;
-        overflow:hidden;
+      /* hero - full-bleed short banner with illustration background */
+      .hero .gov-wrap{{padding:0; max-width:100%}}
+      .hero-inner{{border-radius:0; padding:26px 6vw; color:#fff; position:relative;
+        overflow:hidden; min-height:120px; display:flex; flex-direction:column;
+        justify-content:center;
         background:
-          radial-gradient(130% 120% at 12% 8%, {accent}55, transparent 55%),
-          radial-gradient(120% 130% at 92% 100%, #7aa0ff44, transparent 50%),
+          linear-gradient(90deg, {navy2}f0 0%, {navy}cc 46%, {navy}66 78%, {navy}33 100%),
+          {hero_layer}
           linear-gradient(135deg, {navy} 0%, {navy2} 100%);
-        box-shadow:0 30px 60px -24px {navy}80}}
+        background-size:cover, cover, cover;
+        background-position:center, center right, center;
+        background-repeat:no-repeat}}
       .hero .eyebrow{{display:inline-block; font-size:.78rem; font-weight:700;
-        letter-spacing:.14em; text-transform:uppercase; color:#bcd0ff;
-        background:#ffffff1f; padding:5px 13px; border-radius:999px; margin-bottom:12px}}
-      .hero h1{{font-size:2.05rem; font-weight:800; margin:0 0 8px; letter-spacing:-.03em;
-        line-height:1.2}}
-      .hero p{{font-size:1.08rem; color:#d7e2fb; margin:0; max-width:70ch; line-height:1.55;
-        position:relative; z-index:1}}
+        letter-spacing:.14em; text-transform:uppercase; color:#e2ecff;
+        background:#ffffff2b; padding:5px 13px; border-radius:999px; margin-bottom:10px}}
+      .hero h1{{font-size:2rem; font-weight:800; margin:0 0 6px; letter-spacing:-.03em;
+        line-height:1.18; text-shadow:0 2px 14px {navy2}cc}}
+      .hero p{{font-size:1.04rem; color:#eaf1ff; margin:0; max-width:60ch; line-height:1.5;
+        position:relative; z-index:1; text-shadow:0 1px 10px {navy2}b3}}
       .hero .eyebrow, .hero h1{{position:relative; z-index:1}}
+      /* concentric SVG art is only shown when there is no photo background */
       .hero-art{{position:absolute; right:20px; top:50%; transform:translateY(-50%);
-        width:230px; height:230px; opacity:.9; pointer-events:none}}
-      @media(max-width:820px){{.hero-art{{display:none}}}}
+        width:200px; height:200px; opacity:.9; pointer-events:none;
+        display:{"none" if hero_img else "block"}}}
+      @media(max-width:820px){{.hero-art{{display:none}} .hero-inner{{padding:22px 24px}}}}
 
       /* section */
       .sec{{padding:44px 0}}
@@ -143,6 +170,16 @@ def inject_css():
       [data-testid="stForm"]{{border:0 !important; padding:0 !important; box-shadow:none !important}}
       [data-testid="stForm"] [data-testid="stTextInput"] input{{height:44px}}
       [data-testid="stForm"] button{{height:44px}}
+      /* remove the "Press Enter to submit form" helper text under inputs */
+      [data-testid="InputInstructions"]{{display:none !important}}
+      /* no red anywhere: text inputs + 보내기 button use the navy palette */
+      [data-testid="stTextInput"] input:focus{{
+        border-color:{navy} !important; box-shadow:0 0 0 2px {accent}55 !important}}
+      [data-testid="stForm"] button[kind="secondaryFormSubmit"],
+      [data-testid="stForm"] button[kind="primaryFormSubmit"]{{
+        background:{navy} !important; border-color:{navy} !important; color:#fff !important}}
+      [data-testid="stForm"] button:hover{{background:{navy2} !important;
+        border-color:{navy2} !important; color:#fff !important}}
 
       /* colored category cards */
       .cat-grid{{display:grid; grid-template-columns:repeat(3,1fr); gap:20px}}
