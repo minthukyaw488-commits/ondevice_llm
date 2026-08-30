@@ -26,19 +26,33 @@ ANSWER_SYSTEM_PROMPT = (
 )
 
 
+# Smaller models answer far faster on-device. Prefer these for low latency;
+# fall back to whatever is installed so nothing breaks if they are absent.
+FAST_MODELS = ["llama3.2:1b", "qwen2.5:1.5b", "qwen2.5:0.5b", "gemma2:2b", "llama3.2:3b"]
+
+
 class LocalLLM:
     def __init__(self, model: str = config.LLM_MODEL, host: str = config.OLLAMA_HOST):
-        self.model = model
         self.host = host.rstrip("/")
-        self.available = self._ping()
+        self.model = model
+        self.available = self._ping_and_pick(model)
 
-    def _ping(self) -> bool:
+    def _ping_and_pick(self, preferred: str) -> bool:
+        """Ping Ollama and choose the model: preferred if present, else the
+        fastest installed model, else the first available one."""
         try:
             req = urllib.request.Request(f"{self.host}/api/tags")
-            with urllib.request.urlopen(req, timeout=3):
-                return True
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                installed = [m["name"] for m in json.loads(resp.read()).get("models", [])]
         except Exception:
             return False
+        names = set(installed) | {n.split(":")[0] for n in installed}
+        if preferred in names:
+            self.model = preferred
+        else:
+            self.model = next((m for m in FAST_MODELS if m in names),
+                              installed[0] if installed else preferred)
+        return True
 
     def generate(self, prompt: str, system: str = "") -> str:
         if not self.available:
