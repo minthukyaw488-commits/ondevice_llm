@@ -283,10 +283,20 @@ class _InMemoryStore:
 
 
 class RagPipeline:
-    def __init__(self, embed_model: EmbeddingModel | None = None):
+    def __init__(self, embed_model: EmbeddingModel | None = None,
+                 use_rerank: bool = config.RAG_USE_RERANK):
         self.embedder = embed_model or EmbeddingModel()
         self.backend = "chroma"
         self._collection = self._init_chroma()
+        self.use_rerank = use_rerank
+        self._reranker = None            # loaded lazily on first retrieve
+
+    @property
+    def reranker(self):
+        if self._reranker is None and self.use_rerank:
+            from .reranker import Reranker
+            self._reranker = Reranker()
+        return self._reranker
 
     def _init_chroma(self):
         try:
@@ -333,23 +343,47 @@ class RagPipeline:
                              documents=chunks, metadatas=metadatas)
         return len(chunks)
 
-    def retrieve(self, question: str, top_k: int = config.RAG_TOP_K) -> List[Retrieved]:
+    def _vector_search(self, question: str, n: int) -> List[Retrieved]:
+        """Top-n candidates by embedding similarity (bi-encoder)."""
         q_emb = list(map(float, self.embedder.encode([question])[0]))
         if self.backend == "chroma":
-            res = self._collection.query(query_embeddings=[q_emb], n_results=top_k)
+            res = self._collection.query(query_embeddings=[q_emb], n_results=n)
             out = []
             for doc, meta, dist in zip(res["documents"][0], res["metadatas"][0],
                                        res["distances"][0]):
                 out.append(Retrieved(text=doc, source=meta.get("source", "?"),
                                      score=1.0 - float(dist)))  # cosine dist -> sim
             return out
-        return self._collection.query(q_emb, top_k)
+        return self._collection.query(q_emb, n)
+
+    def retrieve(self, question: str, top_k: int = config.RAG_TOP_K) -> List[Retrieved]:
+        """Retrieve a candidate pool by embedding, then rerank down to top_k.
+
+        With reranking disabled/unavailable this is a plain top_k embedding
+        search, so behaviour degrades gracefully.
+        """
+        if not self.use_rerank:
+            return self._vector_search(question, top_k)
+        pool = max(top_k, config.RAG_CANDIDATES)
+        candidates = self._vector_search(question, pool)
+        rr = self.reranker
+        if not (rr and rr.available) or len(candidates) <= top_k:
+            return candidates[:top_k]
+        order = rr.rerank(question, [c.text for c in candidates])
+        out = []
+        for idx, score in order[:top_k]:
+            c = candidates[idx]
+            out.append(Retrieved(text=c.text, source=c.source, score=score))
+        return out
 
 
 if __name__ == "__main__":
     rag = RagPipeline()
     n = rag.index()
-    print(f"backend={rag.backend} embedder={rag.embedder.backend} chunks={n}\n")
+    rr = rag.reranker
+    rr_desc = rr.model_name if (rr and rr.available) else "off/unavailable"
+    print(f"backend={rag.backend} embedder={rag.embedder.backend} "
+          f"rerank={rr_desc} chunks={n}\n")
     for q in ["기초연금은 어떻게 신청하나요?",
               "혼자 사는데 응급상황이 걱정돼요",
               "우울하고 외로울 때 상담받고 싶어요"]:

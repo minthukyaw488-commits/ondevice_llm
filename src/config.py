@@ -27,7 +27,16 @@ CHROMA_COLLECTION = "daejeon_welfare"
 # Chunking: welfare PDFs can be long, so split into small overlapping chunks.
 CHUNK_SIZE = 400          # target characters per chunk (200-500 range)
 CHUNK_OVERLAP = 80        # characters shared between neighbouring chunks
-RAG_TOP_K = 2             # fewer chunks -> shorter prompt -> faster LLM reply
+RAG_TOP_K = 3             # chunks passed to the LLM (after reranking)
+
+# --- Reranking (cross-encoder) -------------------------------------------
+# A bi-encoder (bge-m3) can rank a keyword-overlapping chunk above the truly
+# relevant one. Retrieve a larger candidate pool, then a cross-encoder reranker
+# reads (question, chunk) together and reorders them; we keep the top RAG_TOP_K.
+# Falls back to embedding order if the reranker model can't be loaded.
+RERANK_MODEL = "BAAI/bge-reranker-v2-m3"   # multilingual (Korean), no auth
+RAG_CANDIDATES = 10        # candidates fetched by embedding before reranking
+RAG_USE_RERANK = os.environ.get("RAG_RERANK", "1") != "0"   # set RAG_RERANK=0 to disable
 
 # --- Local LLM (Ollama) --------------------------------------------------
 # Runs fully on-device via the Ollama server (http://localhost:11434).
