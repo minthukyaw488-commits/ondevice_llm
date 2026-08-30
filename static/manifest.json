@@ -1,0 +1,18 @@
+{
+  "name": "대전 복지 도우미",
+  "short_name": "복지 도우미",
+  "description": "대전광역시 독거노인 복지 안내 · 음성 AI (기기 내 처리, 대화 비공개)",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f2f6f",
+  "theme_color": "#0f2f6f",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

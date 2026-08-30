@@ -4,6 +4,8 @@
 # especially on Apple Silicon. We don't need hot-reload for the demo.
 [server]
 fileWatcherType = "none"
+# Serve ./static/* (PWA manifest + app icons) at <baseUrl>/app/static/<file>.
+enableStaticServing = true
 
 [browser]
 gatherUsageStats = false

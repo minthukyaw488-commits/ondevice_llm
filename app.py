@@ -284,8 +284,73 @@ def inject_css():
         div[data-testid="stButton"] > button, .chip{{transition:none}}
         .orb{{animation:none !important}}
       }}
+
+      /* ---- phone layout (PWA / mobile web) ------------------------------ */
+      @media(max-width:640px){{
+        .gov-wrap{{padding:0 15px}}
+        .sec{{padding:26px 0}}
+        .sec h2{{font-size:1.42rem}} .sec .sub{{font-size:1rem; margin-bottom:18px}}
+        /* nav links are decorative on a phone -> hide to reduce clutter */
+        .menu{{display:none}}
+        .util .gov-wrap{{gap:16px; justify-content:center; flex-wrap:wrap}}
+        .brand{{font-size:1.2rem}} .brand .seal{{width:36px;height:36px}}
+        .hero h1{{font-size:1.6rem}} .hero p{{font-size:.98rem}}
+        .hero-inner{{min-height:100px; padding:20px 18px}}
+        .cat-name{{font-size:1.22rem}} .cat-desc{{font-size:.98rem}}
+        .cat-card{{min-height:132px; padding:22px 20px}}
+        .bub{{max-width:88%; font-size:1.02rem}}
+        .orb{{width:150px;height:150px;margin:22px auto}}
+        .vstatus{{font-size:1.12rem}}
+        .ai-head{{font-size:1.22rem}}
+        .notice{{flex-direction:column; align-items:flex-start; gap:3px}}
+        .notice .date{{min-width:0}}
+        .foot .cols{{gap:24px}}
+        /* comfortable touch targets */
+        [data-testid="stForm"] button, [data-testid="stTextInput"] input{{
+          min-height:48px !important; font-size:1.05rem !important}}
+        .chip{{padding:12px 18px}}
+      }}
     </style>
     """, unsafe_allow_html=True)
+
+
+def inject_pwa():
+    """Make the page installable to a phone home screen (PWA).
+
+    Streamlit sanitises <script> in st.markdown, so we run a tiny same-origin
+    component that appends the manifest link + Apple/Android meta tags into the
+    PARENT document <head>. The manifest and icons are served locally from
+    ./static (enableStaticServing). No external host, no service worker, no data
+    leaves the device - it just gives an app-like icon and full-screen launch.
+    """
+    import streamlit.components.v1 as components
+    components.html(
+        """
+        <script>
+        (function () {
+          try {
+            var head = window.parent.document.head;
+            function add(tag, attrs) {
+              var key = attrs.rel || attrs.name || 'x';
+              if (head.querySelector(tag + '[data-pwa="' + key + '"]')) return;
+              var el = window.parent.document.createElement(tag);
+              for (var k in attrs) el.setAttribute(k, attrs[k]);
+              el.setAttribute('data-pwa', key);
+              head.appendChild(el);
+            }
+            add('link', {rel: 'manifest', href: 'app/static/manifest.json'});
+            add('link', {rel: 'apple-touch-icon', href: 'app/static/apple-touch-icon.png'});
+            add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
+            add('meta', {name: 'mobile-web-app-capable', content: 'yes'});
+            add('meta', {name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent'});
+            add('meta', {name: 'apple-mobile-web-app-title', content: '복지 도우미'});
+            add('meta', {name: 'theme-color', content: '#0f2f6f'});
+          } catch (e) { /* cross-origin or restricted: silently skip */ }
+        })();
+        </script>
+        """,
+        height=0,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -761,6 +826,7 @@ def main():
             st.rerun()
 
     inject_css()
+    inject_pwa()
 
     if view == "관리자":
         header_nav(client)
