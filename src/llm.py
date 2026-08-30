@@ -29,7 +29,8 @@ ANSWER_SYSTEM_PROMPT = (
 
 # Smaller models answer far faster on-device. Prefer these for low latency;
 # fall back to whatever is installed so nothing breaks if they are absent.
-FAST_MODELS = ["llama3.2:1b", "qwen2.5:1.5b", "qwen2.5:0.5b", "gemma2:2b", "llama3.2:3b"]
+FAST_MODELS = ["exaone3.5:2.4b", "qwen2.5:1.5b", "llama3.2:1b", "qwen2.5:0.5b",
+               "gemma2:2b", "llama3.2:3b"]
 
 
 class LocalLLM:

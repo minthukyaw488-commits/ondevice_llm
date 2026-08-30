@@ -34,7 +34,7 @@ RAG_TOP_K = 2             # fewer chunks -> shorter prompt -> faster LLM reply
 # the pipeline uses a transparent template fallback so the rest of the
 # system can still be demonstrated.
 OLLAMA_HOST = "http://localhost:11434"
-LLM_MODEL = "llama3.2:1b"  # small = fast on-device; auto-falls back if absent
+LLM_MODEL = "exaone3.5:2.4b"  # Korean-native (LG AI); auto-falls back if absent
 LLM_TIMEOUT = 120         # seconds
 
 # --- STT (Whisper) -------------------------------------------------------
