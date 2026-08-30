@@ -751,8 +751,15 @@ def voice_conversation(client):
         orbset("listen", "듣고 있어요…")
 
 
+def _go_home():
+    # Safe way to change the sidebar radio: set its keyed state in a callback,
+    # before the widget is re-instantiated on the next run.
+    st.session_state["view"] = "복지포털 (어르신)"
+
+
 def admin_view(client):
     st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
+    st.button("← 어르신 화면으로 돌아가기", on_click=_go_home, type="primary")
     st.markdown('<h2>관리자 · 이상신호 모니터</h2>'
                 '<p class="sub">어르신 화면에는 보이지 않는 배경 모니터링입니다.</p>',
                 unsafe_allow_html=True)
@@ -815,7 +822,7 @@ def main():
             "음성으로 답변 듣기", value=st.session_state.get("voice_mode", False),
             help=f"로컬 TTS: {get_tts().backend or '사용 불가'}")
         st.divider()
-        view = st.radio("화면", ["복지포털 (어르신)", "관리자"])
+        view = st.radio("화면", ["복지포털 (어르신)", "관리자"], key="view")
         st.caption("상담 방식")
         if st.button("텍스트·검색", use_container_width=True):
             st.session_state["mode"] = "text"; st.rerun()
