@@ -185,6 +185,16 @@ def inject_css():
       .stButton button[kind="primary"]:hover{{transform:translateY(-2px); color:#fff;
         box-shadow:0 18px 32px -10px {accent}aa}}
 
+      /* chat bubbles (user right, assistant left) */
+      .chat{{display:flex; flex-direction:column; gap:12px; padding:10px 0}}
+      .row{{display:flex}} .row.r{{justify-content:flex-end}} .row.l{{justify-content:flex-start}}
+      .bub{{max-width:76%; padding:13px 18px; border-radius:18px; font-size:1.05rem;
+        line-height:1.55; box-shadow:0 1px 3px rgba(16,35,61,.07); word-break:break-word}}
+      .bub.user{{background:linear-gradient(135deg,{accent},{navy}); color:#fff;
+        border-bottom-right-radius:6px}}
+      .bub.bot{{background:{surface}; color:{ink}; border:1px solid {card_bd};
+        border-bottom-left-radius:6px}}
+
       /* AI assistant */
       .ai-head{{display:flex; align-items:center; gap:11px; font-weight:800; color:{navy};
         font-size:1.42rem; padding:6px 2px 12px; letter-spacing:-.02em}}
@@ -358,10 +368,13 @@ def voice_orb(client):
         status.markdown(f'<div class="vstatus">{l}</div>', unsafe_allow_html=True)
 
     def render_chat():
-        with chat_ph.container():
-            for m in st.session_state["chat"][-6:]:
-                with st.chat_message("user" if m[0] == "user" else "assistant"):
-                    st.write(m[1])
+        import html as _html
+        rows = ""
+        for m in st.session_state["chat"][-8:]:
+            side, who = ("r", "user") if m[0] == "user" else ("l", "bot")
+            rows += (f'<div class="row {side}"><div class="bub {who}">'
+                     f'{_html.escape(m[1])}</div></div>')
+        chat_ph.markdown(f'<div class="chat">{rows}</div>', unsafe_allow_html=True)
 
     render_chat()
     if not ctx.state.playing:

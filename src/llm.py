@@ -68,6 +68,7 @@ class LocalLLM:
                 "num_ctx": 2048,          # smaller context -> faster prompt eval
                 "temperature": 0.3,
                 "top_k": 20,
+                "repeat_penalty": 1.3,    # stop small models looping the same phrase
             },
         }
         data = json.dumps(payload).encode("utf-8")
