@@ -5,6 +5,7 @@ All processing runs locally. No cloud LLM / API calls are allowed anywhere
 in this project (privacy requirement: conversation data of 독거노인 must never
 leave the device).
 """
+import os
 from pathlib import Path
 
 # --- Paths ---------------------------------------------------------------
@@ -33,8 +34,9 @@ RAG_TOP_K = 2             # fewer chunks -> shorter prompt -> faster LLM reply
 # This is NOT a cloud API - it is a local process. If Ollama is not running,
 # the pipeline uses a transparent template fallback so the rest of the
 # system can still be demonstrated.
-OLLAMA_HOST = "http://localhost:11434"
-LLM_MODEL = "exaone3.5:2.4b"  # Korean-native (LG AI); auto-falls back if absent
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+# Override at runtime with:  LLM_MODEL=qwen2.5:1.5b python eval_qa.py
+LLM_MODEL = os.environ.get("LLM_MODEL", "exaone3.5:2.4b")  # Korean-native (LG AI)
 LLM_TIMEOUT = 120         # seconds
 
 # --- STT (Whisper) -------------------------------------------------------

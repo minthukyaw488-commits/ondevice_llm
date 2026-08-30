@@ -19,6 +19,7 @@ Usage:  python eval_qa.py           # from the env that has the models
 """
 from __future__ import annotations
 import re
+import time
 from dataclasses import dataclass
 from typing import List
 
@@ -71,6 +72,37 @@ def score_answer(qa: QA, answer: str) -> dict:
             "declined": declined, "len": len(answer)}
 
 
+def run_qa_eval(bot: WelfareAssistant, verbose: bool = True) -> dict:
+    """Run the labelled QA set through `bot` and return aggregate metrics.
+
+    Reusable by eval_models.py: swap bot.llm between calls to compare models
+    on the same RAG index.
+    """
+    n = len(QA_CASES)
+    agg = {"ok": 0, "fact": 0, "ko": 0, "concise": 0}
+    total_len = 0.0
+    total_lat = 0.0
+    for qa in QA_CASES:
+        # Fresh history each question so the signal layer can't perturb answers.
+        bot.reset_conversation()
+        t0 = time.time()
+        ans = bot.ask_text(qa.q).answer.strip()
+        total_lat += time.time() - t0
+        s = score_answer(qa, ans)
+        for k in agg:
+            agg[k] += int(s[k])
+        total_len += s["len"]
+        if verbose:
+            tag = "OUT" if qa.scope == "out" else "in "
+            flags = (f"{'✓fact' if s['fact'] else '✗fact'} "
+                     f"{'✓ko' if s['ko'] else '✗ko'} "
+                     f"{'✓len' if s['concise'] else '✗len'}")
+            mark = "✓" if s["ok"] else "✗"
+            print(f"\n[{mark}][{tag}] {qa.q}   ({flags})")
+            print(f"      → {ans[:160]}{'…' if len(ans) > 160 else ''}")
+    return {"n": n, **agg, "avg_len": total_len / n, "avg_latency": total_lat / n}
+
+
 def main():
     print("Loading pipeline (indexing welfare docs + LLM)...\n")
     bot = WelfareAssistant()
@@ -78,36 +110,20 @@ def main():
     llm_desc = f"{bot.llm.model}" if bot.llm.available else "offline fallback (echo)"
     print(f"LLM backend : {llm_desc}\n")
 
-    n = len(QA_CASES)
-    agg = {"ok": 0, "fact": 0, "ko": 0, "concise": 0}
-    total_len = 0
     print("=" * 70)
     print(" ANSWER QUALITY  (질문 -> 생성된 답변 평가)")
     print("=" * 70)
-    for qa in QA_CASES:
-        # Fresh history each question so the signal layer can't perturb answers.
-        bot.reset_conversation()
-        ans = bot.ask_text(qa.q).answer.strip()
-        s = score_answer(qa, ans)
-        for k in agg:
-            agg[k] += int(s[k])
-        total_len += s["len"]
-        tag = "OUT" if qa.scope == "out" else "in "
-        flags = (f"{'✓fact' if s['fact'] else '✗fact'} "
-                 f"{'✓ko' if s['ko'] else '✗ko'} "
-                 f"{'✓len' if s['concise'] else '✗len'}")
-        mark = "✓" if s["ok"] else "✗"
-        print(f"\n[{mark}][{tag}] {qa.q}   ({flags})")
-        print(f"      → {ans[:160]}{'…' if len(ans) > 160 else ''}")
-
+    r = run_qa_eval(bot, verbose=True)
+    n = r["n"]
     print("\n" + "=" * 70)
     print(" SUMMARY")
     print("=" * 70)
-    print(f"  전체 정답률(pass)   : {agg['ok']}/{n} = {agg['ok']/n:.0%}")
-    print(f"  정확성(fact hit)    : {agg['fact']}/{n} = {agg['fact']/n:.0%}")
-    print(f"  한국어 준수(no eng) : {agg['ko']}/{n} = {agg['ko']/n:.0%}")
-    print(f"  간결성(<= {LEN_LIMIT}자)  : {agg['concise']}/{n} = {agg['concise']/n:.0%}")
-    print(f"  평균 답변 길이      : {total_len/n:.0f}자")
+    print(f"  전체 정답률(pass)   : {r['ok']}/{n} = {r['ok']/n:.0%}")
+    print(f"  정확성(fact hit)    : {r['fact']}/{n} = {r['fact']/n:.0%}")
+    print(f"  한국어 준수(no eng) : {r['ko']}/{n} = {r['ko']/n:.0%}")
+    print(f"  간결성(<= {LEN_LIMIT}자)  : {r['concise']}/{n} = {r['concise']/n:.0%}")
+    print(f"  평균 답변 길이      : {r['avg_len']:.0f}자")
+    print(f"  평균 응답 시간      : {r['avg_latency']:.2f}초")
     if not bot.llm.available:
         print("\n  주의: 지금은 오프라인 폴백(검색결과 요약)입니다. Ollama가 켜진 Mac에서\n"
               "  실행하면 실제 모델 답변 품질이 측정됩니다.")
