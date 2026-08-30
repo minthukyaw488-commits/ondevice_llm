@@ -457,6 +457,9 @@ def voice_orb(client):
     status = st.empty()
     ctx = webrtc_streamer(
         key="home_voice", mode=WebRtcMode.SENDONLY, audio_processor_factory=VP,
+        # No external STUN/TURN: browser and hub are on the same LAN, so host
+        # candidates connect directly and no audio ever leaves the network.
+        rtc_configuration={"iceServers": []},
         media_stream_constraints={
             "audio": {"echoCancellation": True, "noiseSuppression": True},
             "video": False},

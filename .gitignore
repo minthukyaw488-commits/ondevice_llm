@@ -7,3 +7,6 @@ data/audio/*.wav
 _pdf_loader_test.pdf
 data/alerts/
 data/audio/
+
+# HTTPS certs for phone/LAN serving (machine-specific, contains private key)
+certs/
