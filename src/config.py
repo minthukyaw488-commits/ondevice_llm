@@ -38,6 +38,13 @@ RERANK_MODEL = "BAAI/bge-reranker-v2-m3"   # multilingual (Korean), no auth
 RAG_CANDIDATES = 10        # candidates fetched by embedding before reranking
 RAG_USE_RERANK = os.environ.get("RAG_RERANK", "1") != "0"   # set RAG_RERANK=0 to disable
 
+# Relevance gate: if the top (reranked) chunk scores below this, the question is
+# off-topic or not covered by the documents. Instead of letting the LLM answer
+# from a weak/wrong chunk (hallucination), return a warm referral. Calibrated
+# for the cross-encoder's 0-1 relevance score (valid matches are usually > 0.5,
+# off-topic < 0.1). Set RAG_MIN_RELEVANCE=0 to disable the gate.
+RAG_MIN_RELEVANCE = float(os.environ.get("RAG_MIN_RELEVANCE", "0.25"))
+
 # --- Local LLM (Ollama) --------------------------------------------------
 # Runs fully on-device via the Ollama server (http://localhost:11434).
 # This is NOT a cloud API - it is a local process. If Ollama is not running,

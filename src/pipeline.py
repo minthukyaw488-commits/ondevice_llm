@@ -26,8 +26,10 @@ from typing import List, Optional
 from . import config
 from .abnormal_signal import AbnormalSignalDetector, SignalResult
 from .alerts import AlertDispatcher
-from .llm import ANSWER_SYSTEM_PROMPT, LocalLLM, build_answer_prompt
+from .llm import (ANSWER_SYSTEM_PROMPT, OFF_DOMAIN_REPLY, SMALLTALK_SYSTEM_PROMPT,
+                  LocalLLM, build_answer_prompt)
 from .rag_pipeline import RagPipeline
+from .router import is_smalltalk
 
 
 @dataclass
@@ -53,22 +55,46 @@ class WelfareAssistant:
 
     # -- main entry points -------------------------------------------------
     def ask_text(self, question: str) -> TurnResult:
-        # Layer 1 (RAG) and Layer 2 (abnormal signal) run on the same input.
-        retrieved = self.rag.retrieve(question)
-        contexts = [r.text for r in retrieved]
-        sources = [r.source for r in retrieved]
-
+        # Layer 2 (abnormal signal) runs on every utterance, incl. small talk.
         signal = self.detector.add_utterance(question)
 
-        prompt = build_answer_prompt(question, contexts)
-        answer = self.llm.generate(prompt, system=ANSWER_SYSTEM_PROMPT)
+        # 1) Greetings / small talk -> warm chatbot reply, no RAG, no refusal.
+        if is_smalltalk(question):
+            answer = self._smalltalk_reply(question)
+            return TurnResult(question, answer, [], signal, self._maybe_alert(signal))
 
-        alert = None
-        if signal.is_abnormal:
-            alert = self._build_alert(signal)
-            urgency = "긴급" if signal.crisis else "주의"
-            self.alerts.dispatch(self.user_name, urgency, alert)  # log + notify
-        return TurnResult(question, answer, sources, signal, alert)
+        # 2) Welfare question -> RAG, but gate on retrieval confidence so a
+        #    wrong/weak chunk can't be believed and answered (hallucination),
+        #    and off-domain questions get a warm referral instead of a made-up
+        #    answer.
+        retrieved = self.rag.retrieve(question)
+        top_score = retrieved[0].score if retrieved else 0.0
+        if not retrieved or top_score < config.RAG_MIN_RELEVANCE:
+            answer = OFF_DOMAIN_REPLY                 # not covered / off-topic
+            sources: List[str] = []
+        else:
+            contexts = [r.text for r in retrieved]
+            sources = [r.source for r in retrieved]
+            prompt = build_answer_prompt(question, contexts)
+            answer = self.llm.generate(prompt, system=ANSWER_SYSTEM_PROMPT)
+
+        return TurnResult(question, answer, sources, signal, self._maybe_alert(signal))
+
+    def _smalltalk_reply(self, question: str) -> str:
+        """Warm, human reply to a greeting. Uses the LLM with a friendly persona;
+        a canned line if the local LLM is unavailable."""
+        if self.llm.available:
+            return self.llm.generate(question, system=SMALLTALK_SYSTEM_PROMPT)
+        return ("안녕하세요, 어르신. 오늘 어떻게 지내세요? 복지 관련해서 궁금하신 점을 "
+                "편하게 말씀해 주세요.")
+
+    def _maybe_alert(self, signal: SignalResult) -> Optional[str]:
+        if not signal.is_abnormal:
+            return None
+        alert = self._build_alert(signal)
+        urgency = "긴급" if signal.crisis else "주의"
+        self.alerts.dispatch(self.user_name, urgency, alert)  # log + notify
+        return alert
 
     def reset_conversation(self) -> None:
         """Clear the conversation history for a new session/demo.

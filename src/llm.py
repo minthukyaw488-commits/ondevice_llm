@@ -38,6 +38,23 @@ ANSWER_SYSTEM_PROMPT = (
 )
 
 
+# Warm, chatbot-like replies for greetings / small talk (no RAG, no refusal).
+SMALLTALK_SYSTEM_PROMPT = (
+    "당신은 대전광역시 독거노인을 돕는 따뜻하고 친근한 복지 도우미입니다. "
+    "어르신의 인사나 가벼운 안부에 1~2문장으로 다정하고 공손하게 한국어로 답합니다. "
+    "사실이나 숫자를 지어내지 말고, 자연스럽게 안부를 나눈 뒤 '복지 관련해 궁금하신 점을 "
+    "편하게 말씀해 주세요'처럼 부드럽게 안내합니다. 영어 단어나 이모지는 쓰지 않습니다."
+)
+
+# Shown when retrieval finds nothing relevant (off-topic or not in the docs):
+# warm, not a cold refusal, and it steers the user back to what we can help with.
+OFF_DOMAIN_REPLY = (
+    "저는 대전 어르신 복지 안내를 도와드리고 있어요. 방금 말씀은 제가 가진 자료로는 "
+    "정확히 알려드리기 어렵네요. 기초연금, 돌봄, 건강, 일자리 같은 복지 관련이라면 편하게 "
+    "물어봐 주시고, 자세한 문의는 가까운 주민센터(행정복지센터)로 연락하시면 됩니다."
+)
+
+
 # Smaller models answer far faster on-device. Prefer these for low latency;
 # fall back to whatever is installed so nothing breaks if they are absent.
 FAST_MODELS = ["exaone3.5:2.4b", "qwen2.5:1.5b", "llama3.2:1b", "qwen2.5:0.5b",
