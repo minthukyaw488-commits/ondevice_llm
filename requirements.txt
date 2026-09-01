@@ -5,6 +5,11 @@ pdfplumber>=0.11          # PDF text extraction
 chromadb>=1.0             # local persistent vector store
 sentence-transformers>=3.0  # embeddings (BAAI/bge-m3)
 scikit-learn>=1.3         # offline TF-IDF fallback embedder
+# Reranking: cross-encoder (BAAI/bge-reranker-v2-m3) uses sentence-transformers.
+# Structured welfare data (CSV/XLS/XLSX) loading:
+pandas>=2.0               # read Excel/CSV into text for indexing
+openpyxl>=3.1             # .xlsx reader (for pandas)
+xlrd>=2.0                 # .xls reader (for pandas)
 
 # --- Optional: OCR for scanned PDFs ---
 # Also needs system packages: tesseract-ocr, tesseract-ocr-kor, poppler-utils

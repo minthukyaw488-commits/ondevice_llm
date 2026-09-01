@@ -111,6 +111,66 @@ def _ocr_pdf_pages(pdf_path: Path, page_indices: List[int]) -> dict:
     return out
 
 
+def load_text_from_table(path: Path) -> str:
+    """Turn a CSV/XLS/XLSX table into retrievable text: one line per row as
+    "컬럼: 값, 컬럼: 값 …", prefixed with the file name as a heading.
+
+    Structured Daejeon data (급식소·경로당·시설 현황 등) becomes searchable so
+    "가까운 급식소" 같은 질문에 답할 수 있다. Korean government files are often
+    encoded in cp949/euc-kr, which is handled below. Graceful (skips) if the
+    Excel libraries are not installed.
+    """
+    suffix = path.suffix.lower()
+    rows_text: List[str] = []
+
+    if suffix == ".csv":
+        import csv
+        rows = None
+        for enc in ("utf-8-sig", "cp949", "euc-kr", "utf-8"):
+            try:
+                with path.open(encoding=enc, newline="") as f:
+                    rows = list(csv.reader(f))
+                break
+            except (UnicodeDecodeError, LookupError):
+                continue
+        if not rows:
+            return ""
+        header, data = rows[0], rows[1:]
+        for r in data:
+            cells = [f"{h}: {v.strip()}" for h, v in zip(header, r) if v and v.strip()]
+            if cells:
+                rows_text.append(", ".join(cells))
+    else:                                            # .xls / .xlsx
+        try:
+            import pandas as pd
+        except Exception:
+            print(f"[rag] '{path.name}' 건너뜀 (pandas 미설치: pip install pandas openpyxl xlrd).")
+            return ""
+        frames = None
+        for engine in (None, "openpyxl", "xlrd"):    # named .xls may be real xlsx
+            try:
+                frames = pd.read_excel(path, sheet_name=None, dtype=str, engine=engine)
+                break
+            except Exception:
+                frames = None
+        if frames is None:
+            print(f"[rag] '{path.name}' 건너뜀 (엑셀 읽기 실패; openpyxl/xlrd 확인).")
+            return ""
+        for df in frames.values():
+            df = df.fillna("")
+            header = [str(c) for c in df.columns]
+            for _, row in df.iterrows():
+                cells = [f"{h}: {str(v).strip()}" for h, v in zip(header, row)
+                         if str(v).strip()]
+                if cells:
+                    rows_text.append(", ".join(cells))
+
+    if not rows_text:
+        return ""
+    body = "\n\n".join(rows_text)                     # blank line = row boundary
+    return f"# {path.stem}\n\n{body}"
+
+
 def load_documents(docs_dir: Path = config.WELFARE_DOCS_DIR) -> List[dict]:
     """Load every supported file in docs_dir. Returns [{source, text}]."""
     docs: List[dict] = []
@@ -119,6 +179,8 @@ def load_documents(docs_dir: Path = config.WELFARE_DOCS_DIR) -> List[dict]:
             text = load_text_from_pdf(path)
         elif path.suffix.lower() in {".md", ".txt"}:
             text = path.read_text(encoding="utf-8")
+        elif path.suffix.lower() in {".csv", ".xls", ".xlsx"}:
+            text = load_text_from_table(path)
         else:
             continue
         if text.strip():
