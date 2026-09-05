@@ -352,6 +352,7 @@ class RagPipeline:
         self._collection = self._init_chroma()
         self.use_rerank = use_rerank
         self._reranker = None            # loaded lazily on first retrieve
+        self.index_stats: dict = {}      # per-file breakdown set by index()
 
     @property
     def reranker(self):
@@ -379,20 +380,44 @@ class RagPipeline:
             return _InMemoryStore()
 
     def index(self, docs_dir: Path = config.WELFARE_DOCS_DIR) -> int:
-        """Load -> chunk -> embed -> store. Returns number of chunks indexed."""
+        """Load -> chunk -> embed -> store. Returns number of chunks indexed.
+
+        A per-file breakdown of the run is left on ``self.index_stats`` so a
+        caller (e.g. the CLI check report) can show which documents were
+        indexed, how many chunks each kept, and what was skipped.
+        """
         documents = load_documents(docs_dir)
+        loaded_sources = {d["source"] for d in documents}
         chunks, metadatas, ids = [], [], []
+        per_source_kept: Counter = Counter()
+        per_source_dropped: Counter = Counter()
         dropped = 0
         for doc in documents:
             kept = 0
             for chunk in chunk_text(doc["text"]):
                 if is_low_quality(chunk):
                     dropped += 1
+                    per_source_dropped[doc["source"]] += 1
                     continue
                 chunks.append(chunk)
                 metadatas.append({"source": doc["source"], "chunk": kept})
                 ids.append(f"{doc['source']}::{kept}")
                 kept += 1
+            per_source_kept[doc["source"]] = kept
+
+        # Files present but not indexed (unsupported type, or empty after load).
+        supported = {".pdf", ".md", ".txt", ".csv", ".xls", ".xlsx"}
+        skipped_files = [p.name for p in sorted(docs_dir.glob("*"))
+                         if p.is_file() and p.name not in loaded_sources
+                         and p.suffix.lower() in supported]
+        self.index_stats = {
+            "kept": dict(per_source_kept),
+            "dropped": dict(per_source_dropped),
+            "skipped_files": skipped_files,
+            "total_chunks": len(chunks),
+            "total_dropped": dropped,
+        }
+
         if dropped:
             print(f"[rag] dropped {dropped} low-quality chunk(s) (noise/tables).")
         if not chunks:
@@ -439,13 +464,42 @@ class RagPipeline:
         return out
 
 
+def _print_index_report(rag: "RagPipeline", docs_dir: Path, n: int) -> None:
+    """Human-readable check of what just got indexed (run after index())."""
+    stats = rag.index_stats
+    kept = stats.get("kept", {})
+    dropped = stats.get("dropped", {})
+    print("=" * 60)
+    print(f"📂 데이터 폴더: {docs_dir}")
+    print(f"📄 색인된 문서: {len(kept)}개   ·   총 청크: {n}개")
+    print("-" * 60)
+    if kept:
+        width = max(len(s) for s in kept)
+        for src in sorted(kept):
+            d = dropped.get(src, 0)
+            extra = f"  (저품질 {d}개 제외)" if d else ""
+            print(f"  ✅ {src.ljust(width)}  {kept[src]:>4} 청크{extra}")
+    skipped = stats.get("skipped_files", [])
+    if skipped:
+        print("-" * 60)
+        for s in skipped:
+            print(f"  ⚠️  건너뜀(빈 내용/읽기 실패): {s}")
+    print("=" * 60)
+
+
 if __name__ == "__main__":
     rag = RagPipeline()
     n = rag.index()
     rr = rag.reranker
     rr_desc = rr.model_name if (rr and rr.available) else "off/unavailable"
+    _print_index_report(rag, config.WELFARE_DOCS_DIR, n)
     print(f"backend={rag.backend} embedder={rag.embedder.backend} "
-          f"rerank={rr_desc} chunks={n}\n")
+          f"rerank={rr_desc}\n")
+    if n == 0:
+        print("색인된 청크가 없습니다. data/welfare_docs/ 에 문서를 넣었는지, "
+              "지원 형식(pdf/md/txt/csv/xls/xlsx)인지 확인하세요.")
+        raise SystemExit(0)
+    print("🔎 검색 점검 (샘플 질문):\n")
     for q in ["기초연금은 어떻게 신청하나요?",
               "혼자 사는데 응급상황이 걱정돼요",
               "우울하고 외로울 때 상담받고 싶어요"]:
