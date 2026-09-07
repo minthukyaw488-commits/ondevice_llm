@@ -29,7 +29,7 @@ from .alerts import AlertDispatcher
 from .llm import (ANSWER_SYSTEM_PROMPT, OFF_DOMAIN_REPLY, SMALLTALK_SYSTEM_PROMPT,
                   LocalLLM, build_answer_prompt)
 from .rag_pipeline import RagPipeline
-from .router import is_smalltalk
+from .router import is_smalltalk, is_off_domain
 
 
 @dataclass
@@ -62,6 +62,15 @@ class WelfareAssistant:
         if is_smalltalk(question):
             answer = self._smalltalk_reply(question)
             return TurnResult(question, answer, [], signal, self._maybe_alert(signal))
+
+        # 1b) Clearly off-domain (invest, pets, travel, gadgets, ...) -> refer
+        #     back WITHOUT retrieval. With a large facility index almost any
+        #     question finds a nearest chunk above the relevance gate, so the
+        #     model would answer by twisting an unrelated facility row; skipping
+        #     retrieval here removes that hallucination path entirely.
+        if is_off_domain(question):
+            return TurnResult(question, OFF_DOMAIN_REPLY, [], signal,
+                              self._maybe_alert(signal))
 
         # 2) Welfare question -> RAG, but gate on retrieval confidence so a
         #    wrong/weak chunk can't be believed and answered (hallucination),

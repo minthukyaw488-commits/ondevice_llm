@@ -121,7 +121,7 @@ def load_text_from_table(path: Path) -> str:
     Excel libraries are not installed.
     """
     suffix = path.suffix.lower()
-    rows_text: List[str] = []
+    row_groups: List[List[List[str]]] = []           # one list of raw rows per sheet
 
     if suffix == ".csv":
         import csv
@@ -135,11 +135,7 @@ def load_text_from_table(path: Path) -> str:
                 continue
         if not rows:
             return ""
-        header, data = rows[0], rows[1:]
-        for r in data:
-            cells = [f"{h}: {v.strip()}" for h, v in zip(header, r) if v and v.strip()]
-            if cells:
-                rows_text.append(", ".join(cells))
+        row_groups.append([[str(c) for c in r] for r in rows])
     else:                                            # .xls / .xlsx
         try:
             import pandas as pd
@@ -149,7 +145,10 @@ def load_text_from_table(path: Path) -> str:
         frames = None
         for engine in (None, "openpyxl", "xlrd"):    # named .xls may be real xlsx
             try:
-                frames = pd.read_excel(path, sheet_name=None, dtype=str, engine=engine)
+                # header=None: real government sheets put a title in row 0 and the
+                # column names a few rows down, so we detect the header ourselves.
+                frames = pd.read_excel(path, sheet_name=None, dtype=str,
+                                       header=None, engine=engine)
                 break
             except Exception:
                 frames = None
@@ -158,17 +157,51 @@ def load_text_from_table(path: Path) -> str:
             return ""
         for df in frames.values():
             df = df.fillna("")
-            header = [str(c) for c in df.columns]
-            for _, row in df.iterrows():
-                cells = [f"{h}: {str(v).strip()}" for h, v in zip(header, row)
-                         if str(v).strip()]
-                if cells:
-                    rows_text.append(", ".join(cells))
+            row_groups.append([[str(v) for v in row] for _, row in df.iterrows()])
 
+    rows_text: List[str] = []
+    for rows in row_groups:
+        rows_text.extend(_table_rows_to_text(rows))
     if not rows_text:
         return ""
     body = "\n\n".join(rows_text)                     # blank line = row boundary
     return f"# {path.stem}\n\n{body}"
+
+
+def _table_rows_to_text(rows: List[List[str]]) -> List[str]:
+    """Turn one raw table (list of rows) into searchable "컬럼: 값" lines.
+
+    Government spreadsheets carry a title row, blank rows, and sometimes a
+    multi-line header before the data. We drop empty rows, pick the real header
+    (the row with the most non-empty cells among the first few), and skip empty
+    / 'Unnamed' column labels so a row reads like a natural sentence.
+    """
+    def clean(v: str) -> str:
+        return " ".join(str(v).replace("\n", " ").split()).strip()
+
+    rows = [[clean(c) for c in r] for r in rows]
+    rows = [r for r in rows if any(r)]               # drop fully-empty rows
+    if not rows:
+        return []
+    # Header = the row (within the first 6) with the most non-empty cells.
+    scan = min(6, len(rows))
+    head_i = max(range(scan), key=lambda i: sum(1 for c in rows[i] if c))
+    header = rows[head_i]
+
+    def label(h: str) -> str:
+        return "" if (not h or h.lower().startswith("unnamed") or h.startswith("Column")) else h
+
+    lines: List[str] = []
+    for r in rows[head_i + 1:]:
+        cells = []
+        for h, v in zip(header, r):
+            if not v:
+                continue
+            lab = label(h)
+            cells.append(f"{lab}: {v}" if lab else v)
+        if cells:
+            lines.append(", ".join(cells))
+    return lines
 
 
 def load_documents(docs_dir: Path = config.WELFARE_DOCS_DIR) -> List[dict]:

@@ -117,7 +117,10 @@ def score_answer(qa: QA, answer: str) -> dict:
         declined = False
         ok = fact and ko and concise
     else:                                  # out-of-scope: correct = a clean refusal
-        declined = any(f.replace(" ", "") in a for f in qa.facts)
+        # A refusal that redirects the user to a public office counts, whether
+        # it says 주민센터, 행정복지센터, or "문의" - all are valid referrals.
+        redirects = set(f.replace(" ", "") for f in qa.facts) | {"행정복지센터", "문의"}
+        declined = any(r in a for r in redirects)
         fact = declined
         ok = declined and ko and concise
     return {"ok": ok, "fact": fact, "ko": ko, "concise": concise,
