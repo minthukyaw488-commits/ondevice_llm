@@ -1,5 +1,5 @@
 """
-대전광역시 복지포털 (demo) - Streamlit.
+대전노인복지HUB (demo) - Streamlit.
 
 A public-service style welfare portal for elderly residents of Daejeon:
 official-style header + nav, a prominent voice AI welfare assistant, welfare
@@ -16,7 +16,7 @@ from src import config
 from src.tts import TextToSpeech
 from src.worker import AssistantClient
 
-st.set_page_config(page_title="대전광역시 복지포털", layout="wide",
+st.set_page_config(page_title="대전노인복지HUB", layout="wide",
                    initial_sidebar_state="expanded")
 
 # --- service categories & content ----------------------------------------
@@ -411,7 +411,7 @@ def header_nav(client):
             'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
             'stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/>'
             '<path d="M9 21v-5h6v5"/></svg></span>')
-    b.markdown(f'<div class="brand">{seal} 대전광역시 복지포털</div>', unsafe_allow_html=True)
+    b.markdown(f'<div class="brand">{seal} 대전노인복지HUB</div>', unsafe_allow_html=True)
     with s:
         with st.form("hdr_search", clear_on_submit=True):
             sc1, sc2 = st.columns([3, 1])
@@ -609,7 +609,7 @@ def footer():
     st.markdown("""
     <div class="foot"><div class="gov-wrap">
       <div class="cols">
-        <div><b>대전광역시 복지포털</b>대전광역시 서구 둔산로 100<br>
+        <div><b>대전노인복지HUB</b>대전광역시 서구 둔산로 100<br>
              노인복지과 042-000-0000</div>
         <div><b>바로가기</b>기초연금 · 노인맞춤돌봄<br>치매안심센터 · 방문건강관리</div>
         <div><b>상담전화</b>복지상담 129<br>자살예방상담 109 (24시간)</div>
@@ -637,7 +637,7 @@ def voice_conversation(client):
         return
 
     st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
-    if st.button("← 복지포털 홈으로 돌아가기", use_container_width=True, type="primary"):
+    if st.button("← 대전노인복지HUB 홈으로 돌아가기", use_container_width=True, type="primary"):
         st.session_state["mode"] = "text"
         st.rerun()
     st.caption("대화 중이면 먼저 아래 STOP을 누른 뒤 이 버튼을 눌러 주세요.")
@@ -754,7 +754,7 @@ def voice_conversation(client):
 def _go_home():
     # Safe way to change the sidebar radio: set its keyed state in a callback,
     # before the widget is re-instantiated on the next run.
-    st.session_state["view"] = "복지포털 (어르신)"
+    st.session_state["view"] = "대전노인복지HUB (어르신)"
 
 
 def admin_view(client):
@@ -791,7 +791,7 @@ def admin_view(client):
 
 
 def main():
-    with st.spinner("복지포털을 준비하는 중입니다…"):
+    with st.spinner("대전노인복지HUB를 준비하는 중입니다…"):
         client = get_client()
     st.session_state.setdefault("chat", [])
     st.session_state.setdefault("alerts", [])
@@ -822,7 +822,7 @@ def main():
             "음성으로 답변 듣기", value=st.session_state.get("voice_mode", False),
             help=f"로컬 TTS: {get_tts().backend or '사용 불가'}")
         st.divider()
-        view = st.radio("화면", ["복지포털 (어르신)", "관리자"], key="view")
+        view = st.radio("화면", ["대전노인복지HUB (어르신)", "관리자"], key="view")
         st.caption("상담 방식")
         if st.button("텍스트·검색", use_container_width=True):
             st.session_state["mode"] = "text"; st.rerun()
