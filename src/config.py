@@ -55,6 +55,16 @@ OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 LLM_MODEL = os.environ.get("LLM_MODEL", "exaone3.5:2.4b")  # Korean-native (LG AI)
 LLM_TIMEOUT = 120         # seconds
 
+# --- Agentic mode (experimental, src/agent.py) --------------------------
+# A bounded tool-calling agent: the LLM plans, picks a tool (welfare search /
+# facility lookup), observes, and repeats up to AGENT_MAX_STEPS before
+# answering. Kept small and local; falls back to the deterministic pipeline
+# whenever the model can't produce a valid tool call.
+AGENT_MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", "3"))
+# Tool-calling works better on a model tuned for it; override without touching
+# the answer model, e.g.  AGENT_MODEL=qwen2.5:7b  (stays local via Ollama).
+AGENT_MODEL = os.environ.get("AGENT_MODEL", LLM_MODEL)
+
 # --- STT (Whisper) -------------------------------------------------------
 WHISPER_MODEL = "base"    # tiny/base/small - base is a good speed/quality mix
 WHISPER_LANGUAGE = "ko"   # elderly speak Korean

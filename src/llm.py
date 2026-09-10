@@ -88,19 +88,22 @@ class LocalLLM:
                               installed[0] if installed else preferred)
         return True
 
-    def generate(self, prompt: str, system: str = "") -> str:
+    def generate(self, prompt: str, system: str = "", num_predict: int = 130,
+                 model: str | None = None, temperature: float = 0.3) -> str:
+        """Generate a completion. `num_predict`/`model`/`temperature` can be
+        overridden (the agent uses a longer budget and its own model)."""
         if not self.available:
             return self._fallback(prompt)
         payload = {
-            "model": self.model,
+            "model": model or self.model,
             "prompt": prompt,
             "system": system,
             "stream": False,
             "keep_alive": "30m",          # keep the model loaded -> no reload latency
             "options": {
-                "num_predict": 130,       # short answers -> much less to generate
+                "num_predict": num_predict,
                 "num_ctx": 2048,          # smaller context -> faster prompt eval
-                "temperature": 0.3,
+                "temperature": temperature,
                 "top_k": 20,
                 "repeat_penalty": 1.3,    # stop small models looping the same phrase
             },
