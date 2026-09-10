@@ -70,6 +70,7 @@
 | `src/abnormal_signal.py` | **Step 3** 감정 분석 + 증상 반복 + baseline 이상징후 |
 | `src/llm.py` | 로컬 Ollama LLM 클라이언트 + 프롬프트(근거 기반·잡담·거절) |
 | `src/pipeline.py` | **Step 4** 전체 통합 (라우팅·게이트·알림) |
+| `src/agent.py` | **실험** 에이전트 (도구 호출 + 다중 의도 플래너, 로컬·안전) |
 | `src/worker.py`, `src/worker_server.py` | 모델 추론용 별도 워커 프로세스 |
 | `src/vad_stream.py`, `src/tts.py` | 핸즈프리 음성(VAD) · 로컬 TTS |
 | `app.py` | Streamlit 웹/모바일 데모 (정부포털 스타일, PWA) |
@@ -79,6 +80,7 @@
 | `evaluate.py` | RAG Hit@k · 이상신호 F1 평가 |
 | `eval_qa.py` | 답변 품질 평가 (200문항, `data/eval/qa_200.jsonl`) |
 | `eval_models.py` | 여러 로컬 LLM 성능 비교 |
+| `eval_agent.py` | 결정형 vs 에이전트 파이프라인 비교 |
 | `make_eval200.py` | 200문항 평가셋 생성기 |
 | `data/welfare_docs/` | 복지 문서 (실데이터 + 샘플) |
 
@@ -161,6 +163,36 @@ python eval_models.py exaone3.5:2.4b qwen2.5:1.5b   # 모델 비교
   빠진 경우로, 사실 정확도(fact hit)는 **97%**로 높음.
 - **모델 비교**: 실데이터에서 한국어 특화 **EXAONE 3.5 > Qwen 2.5** (Llama 계열은 영어 혼입).
 - 한계: 평가셋은 자체 제작(held-out 미구성), 지표는 키워드 기반이므로 향후 사람/LLM 평가로 보강 예정.
+
+## 실험적 에이전트 모드 (Agentic · Phase 1+2)
+
+기본 파이프라인은 고정 흐름(route→retrieve→rerank→gate→answer)입니다. `src/agent.py`
+는 그 위에 **로컬 에이전트**를 얹은 실험 구현으로, LLM이 스스로 도구를 고르고 복합
+질문을 분해합니다. **온디바이스·개인정보·안전** 원칙은 그대로 지킵니다.
+
+- **Phase 1 — 도구 호출(ReAct, bounded):** 화이트리스트 도구(`search_welfare_docs`,
+  `lookup_facility`)를 최대 `AGENT_MAX_STEPS`회 호출. 반복/오형식 호출은 즉시 중단.
+- **Phase 2 — 다중 의도 플래너:** "무릎도 아프고 난방비도 걱정이고 일자리도 필요해요"를
+  주제별 하위 질문으로 나눠 각각 검색·게이트 후 하나로 합칩니다. 단일 질문은 휴리스틱으로
+  분해를 건너뛰어 과분할을 막습니다.
+- **역할 분리(hybrid):** 에이전트 모델은 '무엇을 할지'만 결정하고, **최종 답변은 항상
+  한국어 답변 모델(EXAONE)이 `ANSWER_SYSTEM_PROMPT`로 근거 위에서 합성** → 답변 품질이
+  에이전트 모델 성능과 무관하게 유지됩니다.
+- **안전:** 관련성 게이트 유지(근거 없으면 주민센터 안내), 그리고 스몰토크·off-domain·
+  LLM 부재·형식 오류 시 **결정형 파이프라인으로 자동 후퇴**해 성능이 나빠지지 않습니다.
+
+```bash
+python -m src.agent                                  # 데모(추적 로그 포함)
+AGENT_MODEL=llama3.1:latest python -m src.agent      # 분해가 더 정확한 플래너
+python eval_agent.py                                 # 결정형 vs 에이전트 비교
+EVAL_LIMIT=30 python eval_agent.py                   # 빠른 부분 비교
+```
+
+**관찰(실측):** 표준(단일 의도) 질문에서 에이전트는 결정형과 **동등**(20문항 부분셋에서
+양쪽 100%, regression 없음)하며, 복합 질문 처리 능력을 추가로 얻습니다. 다만 **소형 로컬
+모델(2.4B)은 도구 선택·질문 분해가 불안정**(과분할/미분할)하여, 플래너에는 더 큰 로컬
+모델(예: llama3.1)이 필요합니다 — "안전·저사양이 우선인 환경에서 통제형이 기본이고
+에이전트는 확장 옵션"이라는 설계 근거를 실측으로 뒷받침합니다.
 
 ## 휴대폰에서 사용 (모바일 웹 · PWA)
 

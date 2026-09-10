@@ -126,6 +126,13 @@ class WelfareAgent:
         return TurnResult(question, answer, sources, signal,
                           self.bot._maybe_alert(signal))
 
+    # Drop-in compatibility with the eval harness / app (which call ask_text).
+    def ask_text(self, question: str) -> TurnResult:
+        return self.ask(question)
+
+    def reset_conversation(self) -> None:
+        self.bot.reset_conversation()
+
     # -- the ReAct-style loop ---------------------------------------------
     def _run_loop(self, question: str,
                   verbose: bool = False) -> Tuple[str | None, List[str]]:
