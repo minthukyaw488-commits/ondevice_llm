@@ -67,6 +67,11 @@ AGENT_MAX_SUBINTENTS = int(os.environ.get("AGENT_MAX_SUBINTENTS", "4"))
 # Tool-calling works better on a model tuned for it; override without touching
 # the answer model, e.g.  AGENT_MODEL=qwen2.5:7b  (stays local via Ollama).
 AGENT_MODEL = os.environ.get("AGENT_MODEL", LLM_MODEL)
+# When on (default), welfare questions are answered by the tool-calling agent,
+# with an automatic fallback to the deterministic RAG path when the model can't
+# produce a valid tool call. Set USE_AGENT=0 to force the classic pipeline
+# (e.g. the fastest evaluation runs, or a small model that can't tool-call).
+USE_AGENT = os.environ.get("USE_AGENT", "1") not in ("0", "false", "False", "")
 
 # --- STT (Whisper) -------------------------------------------------------
 WHISPER_MODEL = "base"    # tiny/base/small - base is a good speed/quality mix

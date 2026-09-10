@@ -130,6 +130,25 @@ class WelfareAgent:
     def ask_text(self, question: str) -> TurnResult:
         return self.ask(question)
 
+    def run_welfare(self, question: str) -> Tuple[str, List[str]]:
+        """Answer a welfare question with the planner/tool loop, falling back to
+        the deterministic RAG path on any failure. Returns (answer, sources).
+
+        Called by WelfareAssistant.ask_text for welfare turns; routing, signal
+        and alert handling stay there, so this never calls back into ask_text
+        (no recursion)."""
+        try:
+            if self.mode == "planner":
+                answer, sources = self._plan_and_answer(question)
+            else:
+                answer, sources = self._run_loop(question)
+        except Exception as exc:               # never fail worse than the pipeline
+            print(f"[agent] {self.mode} error ({exc.__class__.__name__}); using pipeline.")
+            return self._rag_answer(question)
+        if answer is None:                     # agent gave up -> deterministic RAG
+            return self._rag_answer(question)
+        return answer, sources
+
     def reset_conversation(self) -> None:
         self.bot.reset_conversation()
 

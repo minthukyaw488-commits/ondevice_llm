@@ -52,6 +52,15 @@ class WelfareAssistant:
         self.detector = AbnormalSignalDetector()  # accumulates history
         self.alerts = AlertDispatcher()           # local log (+ opt-in channels)
         self._stt = None                          # Whisper, loaded on first use
+        self.use_agent = config.USE_AGENT         # answer via tool-calling agent
+        self._agent = None                        # lazily built (avoids import cycle)
+
+    @property
+    def agent(self):
+        if self._agent is None:
+            from .agent import WelfareAgent       # local import breaks the cycle
+            self._agent = WelfareAgent(assistant=self)
+        return self._agent
 
     # -- main entry points -------------------------------------------------
     def ask_text(self, question: str) -> TurnResult:
@@ -72,22 +81,28 @@ class WelfareAssistant:
             return TurnResult(question, OFF_DOMAIN_REPLY, [], signal,
                               self._maybe_alert(signal))
 
-        # 2) Welfare question -> RAG, but gate on retrieval confidence so a
-        #    wrong/weak chunk can't be believed and answered (hallucination),
-        #    and off-domain questions get a warm referral instead of a made-up
-        #    answer.
+        # 2) Welfare question -> the tool-calling agent decides which tools to
+        #    use and (Phase 2) splits compound questions, with a deterministic
+        #    fallback baked in. With USE_AGENT off, or when the local LLM is
+        #    unavailable, use the classic RAG pipeline.
+        if self.use_agent and self.llm.available:
+            answer, sources = self.agent.run_welfare(question)
+        else:
+            answer, sources = self._deterministic_answer(question)
+
+        return TurnResult(question, answer, sources, signal, self._maybe_alert(signal))
+
+    def _deterministic_answer(self, question: str):
+        """Classic RAG path: retrieve -> relevance gate -> grounded answer.
+        Used when USE_AGENT is off or the LLM is unavailable."""
         retrieved = self.rag.retrieve(question)
         top_score = retrieved[0].score if retrieved else 0.0
         if not retrieved or top_score < config.RAG_MIN_RELEVANCE:
-            answer = OFF_DOMAIN_REPLY                 # not covered / off-topic
-            sources: List[str] = []
-        else:
-            contexts = [r.text for r in retrieved]
-            sources = [r.source for r in retrieved]
-            prompt = build_answer_prompt(question, contexts)
-            answer = self.llm.generate(prompt, system=ANSWER_SYSTEM_PROMPT)
-
-        return TurnResult(question, answer, sources, signal, self._maybe_alert(signal))
+            return OFF_DOMAIN_REPLY, []               # not covered / off-topic
+        contexts = [r.text for r in retrieved]
+        prompt = build_answer_prompt(question, contexts)
+        answer = self.llm.generate(prompt, system=ANSWER_SYSTEM_PROMPT)
+        return answer, [r.source for r in retrieved]
 
     def _smalltalk_reply(self, question: str) -> str:
         """Warm, human reply to a greeting. Uses the LLM with a friendly persona;

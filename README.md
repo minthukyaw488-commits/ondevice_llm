@@ -166,9 +166,11 @@ python eval_models.py exaone3.5:2.4b qwen2.5:1.5b   # 모델 비교
 
 ## 실험적 에이전트 모드 (Agentic · Phase 1+2)
 
-기본 파이프라인은 고정 흐름(route→retrieve→rerank→gate→answer)입니다. `src/agent.py`
-는 그 위에 **로컬 에이전트**를 얹은 실험 구현으로, LLM이 스스로 도구를 고르고 복합
-질문을 분해합니다. **온디바이스·개인정보·안전** 원칙은 그대로 지킵니다.
+복지 질문의 **기본 답변 경로는 이 로컬 에이전트**입니다(`USE_AGENT=1`, 기본값). LLM이
+스스로 도구를 고르고 복합 질문을 분해하며, 도구 호출에 실패하면 고정 흐름
+(route→retrieve→rerank→gate→answer)의 **결정형 파이프라인으로 자동 후퇴**합니다.
+`USE_AGENT=0`으로 결정형을 강제할 수 있습니다. **온디바이스·개인정보·안전** 원칙은
+그대로 지킵니다.
 
 - **Phase 1 — 도구 호출(ReAct, bounded):** 화이트리스트 도구(`search_welfare_docs`,
   `lookup_facility`)를 최대 `AGENT_MAX_STEPS`회 호출. 반복/오형식 호출은 즉시 중단.
