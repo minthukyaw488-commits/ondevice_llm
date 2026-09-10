@@ -61,6 +61,9 @@ LLM_TIMEOUT = 120         # seconds
 # answering. Kept small and local; falls back to the deterministic pipeline
 # whenever the model can't produce a valid tool call.
 AGENT_MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", "3"))
+# Phase 2 planner: a compound question ("무릎도 아프고 난방비도 걱정") is split into
+# up to this many single-topic sub-questions, each retrieved, then answered as one.
+AGENT_MAX_SUBINTENTS = int(os.environ.get("AGENT_MAX_SUBINTENTS", "4"))
 # Tool-calling works better on a model tuned for it; override without touching
 # the answer model, e.g.  AGENT_MODEL=qwen2.5:7b  (stays local via Ollama).
 AGENT_MODEL = os.environ.get("AGENT_MODEL", LLM_MODEL)
