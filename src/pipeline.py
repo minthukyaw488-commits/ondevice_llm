@@ -27,7 +27,7 @@ from . import config
 from .abnormal_signal import AbnormalSignalDetector, SignalResult
 from .alerts import AlertDispatcher
 from .llm import (ANSWER_SYSTEM_PROMPT, OFF_DOMAIN_REPLY, SMALLTALK_SYSTEM_PROMPT,
-                  LocalLLM, build_answer_prompt)
+                  build_answer_prompt, make_llm)
 from .rag_pipeline import RagPipeline
 from .router import is_smalltalk, is_off_domain
 
@@ -48,7 +48,7 @@ class WelfareAssistant:
         self.user_name = user_name
         self.rag = RagPipeline()
         self.rag.index()                         # build the welfare index once
-        self.llm = LocalLLM()
+        self.llm = make_llm()               # GPT-4o (API) or local Ollama fallback
         self.detector = AbnormalSignalDetector()  # accumulates history
         self.alerts = AlertDispatcher()           # local log (+ opt-in channels)
         self._stt = None                          # Whisper, loaded on first use
@@ -171,7 +171,8 @@ if __name__ == "__main__":
     print("Initialising assistant (indexing welfare docs)...\n")
     bot = WelfareAssistant(user_name="김OO 어르신")
     print(f"RAG={bot.rag.backend}/{bot.rag.embedder.backend} | "
-          f"LLM(Ollama)={'on' if bot.llm.available else 'off (fallback)'} | "
+          f"LLM={type(bot.llm).__name__}:{bot.llm.model}"
+          f"({'on' if bot.llm.available else 'off (fallback)'}) | "
           f"sentiment={bot.detector.sentiment.backend}\n")
 
     conversation = [

@@ -1,9 +1,12 @@
 """
-Central configuration for the on-device elderly welfare voice AI system.
+Central configuration for the elderly welfare voice AI system (대전노인복지 HUB).
 
-All processing runs locally. No cloud LLM / API calls are allowed anywhere
-in this project (privacy requirement: conversation data of 독거노인 must never
-leave the device).
+Answer generation uses a cloud LLM API (GPT-4o) combined with a Retrieval-
+Augmented Generation (RAG) index built from Daejeon public welfare data. The
+LLM provides general language ability; the RAG index grounds every answer in
+대전 공공데이터 so the assistant does not hallucinate and can be corrected by
+updating the documents (no retraining). A local Ollama backend is kept as a
+fallback so the pipeline still runs without an API key.
 """
 import os
 from pathlib import Path
@@ -45,11 +48,22 @@ RAG_USE_RERANK = os.environ.get("RAG_RERANK", "1") != "0"   # set RAG_RERANK=0 t
 # off-topic < 0.1). Set RAG_MIN_RELEVANCE=0 to disable the gate.
 RAG_MIN_RELEVANCE = float(os.environ.get("RAG_MIN_RELEVANCE", "0.25"))
 
-# --- Local LLM (Ollama) --------------------------------------------------
-# Runs fully on-device via the Ollama server (http://localhost:11434).
-# This is NOT a cloud API - it is a local process. If Ollama is not running,
-# the pipeline uses a transparent template fallback so the rest of the
-# system can still be demonstrated.
+# --- LLM backend ---------------------------------------------------------
+# Answer generation backend: "openai" (GPT-4o via API, default) or "ollama"
+# (local). If the selected backend is unavailable (e.g. no API key, Ollama not
+# running), the pipeline falls back to a transparent template so the rest of
+# the system can still be demonstrated.
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "openai").lower()
+
+# OpenAI (GPT-4o). Set your key at runtime:  OPENAI_API_KEY=sk-... python app.py
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
+OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+
+# --- Local LLM (Ollama) — fallback backend -------------------------------
+# Used when LLM_BACKEND=ollama, or as a fallback when the OpenAI key is absent.
+# Runs via the Ollama server (http://localhost:11434). If neither backend is
+# available, a transparent template fallback keeps the demo running.
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 # Override at runtime with:  LLM_MODEL=qwen2.5:1.5b python eval_qa.py
 LLM_MODEL = os.environ.get("LLM_MODEL", "exaone3.5:2.4b")  # Korean-native (LG AI)

@@ -1,13 +1,18 @@
 """
-Local LLM client (Ollama).
+LLM client.
 
-Ollama runs the model on-device at http://localhost:11434. This is a local
-process, NOT a cloud API - it satisfies the strict "no external LLM" rule.
+Two interchangeable backends expose the same interface (`.available`, `.model`,
+`.generate(...)`):
 
-If the Ollama server is not running, a transparent template responder is used
-so the full pipeline can still be demonstrated. The template simply relays the
-retrieved welfare text; it is clearly marked so it is never mistaken for a
-real model answer.
+  * OpenAILLM  - GPT-4o via the OpenAI API (default). General language ability;
+                 grounded by the RAG index so answers stay on 대전 공공데이터.
+  * LocalLLM   - Ollama running a local model (http://localhost:11434), kept as
+                 a fallback when no API key is set.
+
+`make_llm()` picks the backend from config (LLM_BACKEND), falling back to
+Ollama, then to a transparent template responder so the full pipeline can
+always be demonstrated. The template simply relays the retrieved welfare text
+and is clearly marked so it is never mistaken for a real model answer.
 """
 from __future__ import annotations
 import json
@@ -125,6 +130,78 @@ class LocalLLM:
         return f"{note}\n{prompt.split('참고 자료:', 1)[-1].strip()[:600]}"
 
 
+class OpenAILLM:
+    """GPT-4o via the OpenAI Chat Completions API.
+
+    Same interface as LocalLLM (`.available`, `.model`, `.generate(...)`), so the
+    rest of the pipeline (pipeline.py, agent.py) does not change. Answers are
+    still grounded by the RAG context that build_answer_prompt() injects, so the
+    model answers from 대전 공공데이터 rather than its own memory.
+
+    `.available` is False when no API key is set; generate() then returns the
+    transparent template fallback, keeping the demo runnable offline.
+    """
+
+    def __init__(self, model: str = config.OPENAI_MODEL,
+                 api_key: str = config.OPENAI_API_KEY,
+                 base_url: str = config.OPENAI_BASE_URL):
+        self.model = model
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.host = self.base_url          # parity with LocalLLM.host
+        self.available = bool(api_key)
+
+    def generate(self, prompt: str, system: str = "", num_predict: int = 130,
+                 model: str | None = None, temperature: float = 0.3) -> str:
+        """Generate a completion. Signature matches LocalLLM.generate so callers
+        are unchanged. An Ollama-style `model` override (e.g. the agent's
+        'exaone3.5:2.4b') is ignored here; only a 'gpt*' override is honoured."""
+        if not self.available:
+            return self._fallback(prompt)
+        mdl = model if (model and model.startswith("gpt")) else self.model
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        payload = {
+            "model": mdl,
+            "messages": messages,
+            "temperature": temperature,
+            # num_predict is sized for Ollama tokens; Korean needs more OpenAI
+            # tokens per character, so give the completion headroom.
+            "max_tokens": max(int(num_predict * 3), 300),
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/chat/completions", data=data,
+            headers={"Content-Type": "application/json",
+                     "Authorization": f"Bearer {self.api_key}"})
+        try:
+            with urllib.request.urlopen(req, timeout=config.LLM_TIMEOUT) as resp:
+                body = json.loads(resp.read())
+                return body["choices"][0]["message"]["content"].strip()
+        except (urllib.error.URLError, KeyError, IndexError, TimeoutError) as exc:
+            return self._fallback(prompt, error=str(exc))
+
+    # Reuse the same transparent fallback as LocalLLM.
+    _fallback = staticmethod(LocalLLM._fallback)
+
+
+def make_llm():
+    """Pick the answer-generation backend from config.
+
+    LLM_BACKEND=openai (default) -> GPT-4o if OPENAI_API_KEY is set.
+    Falls back to Ollama (LocalLLM), which itself falls back to a template
+    responder, so the pipeline always runs.
+    """
+    if config.LLM_BACKEND == "openai":
+        llm = OpenAILLM()
+        if llm.available:
+            return llm
+        # No API key -> try the local Ollama backend instead of failing.
+    return LocalLLM()
+
+
 def build_answer_prompt(question: str, contexts: List[str]) -> str:
     """Combine the question with retrieved welfare chunks into an LLM prompt."""
     if contexts:
@@ -138,8 +215,9 @@ def build_answer_prompt(question: str, contexts: List[str]) -> str:
 
 
 if __name__ == "__main__":
-    llm = LocalLLM()
-    print("Ollama available:", llm.available, f"(model={llm.model})")
+    llm = make_llm()
+    print(f"LLM backend: {type(llm).__name__} | available: {llm.available} "
+          f"(model={llm.model})")
     prompt = build_answer_prompt(
         "기초연금은 어떻게 신청하나요?",
         ["기초연금은 만 65세 이상이고 소득 기준 이하인 어르신에게 매월 지급되며, "

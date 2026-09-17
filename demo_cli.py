@@ -15,10 +15,11 @@ from src.pipeline import WelfareAssistant
 
 def banner(bot: WelfareAssistant):
     print("=" * 62)
-    print(" 대전 독거노인 복지 안내 · 이상신호 감지 데모 (전부 로컬 실행)")
+    print(" 대전 독거노인 복지 안내 · 이상신호 감지 데모 (GPT-4o + 대전 RAG)")
     print("=" * 62)
     print(f" RAG        : {bot.rag.backend} / {bot.rag.embedder.backend}")
-    print(f" LLM(Ollama): {'실행 중' if bot.llm.available else '미실행 → 템플릿 대체'}")
+    print(f" LLM        : {type(bot.llm).__name__}:{bot.llm.model} "
+          f"({'실행 중' if bot.llm.available else '미실행 → 템플릿 대체'})")
     print(f" 감정 분석  : {bot.detector.sentiment.backend}")
     print(" 질문을 입력하세요. 종료하려면 'quit' 또는 '종료'.\n")
 
