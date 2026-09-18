@@ -66,9 +66,12 @@ OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
 # only the base URL, key and model name differ. Get a key, then:
 #   LLM_BACKEND=gemini GEMINI_API_KEY=... python demo_cli.py
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+# Native Gemini REST base (models/<model>:generateContent). Same endpoint the
+# key works with for listing models, so it's more reliable than the
+# OpenAI-compatibility layer (which 404s for some keys/projects).
 GEMINI_BASE_URL = os.environ.get(
-    "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")
+    "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
 
 # --- Local LLM (Ollama) — fallback backend -------------------------------
 # Used when LLM_BACKEND=ollama, or as a fallback when the OpenAI key is absent.

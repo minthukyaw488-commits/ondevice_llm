@@ -210,21 +210,76 @@ class OpenAILLM:
         return f"{note}\n{prompt.split('참고 자료:', 1)[-1].strip()[:600]}"
 
 
+class GeminiLLM:
+    """Google Gemini via the native REST API (models/<model>:generateContent).
+
+    Same interface as LocalLLM/OpenAILLM (`.available`, `.model`, `.generate`).
+    Uses the same endpoint + `?key=` auth that works for listing models, so it
+    avoids the OpenAI-compatibility layer that 404s for some keys/projects.
+    """
+
+    def __init__(self, model: str = config.GEMINI_MODEL,
+                 api_key: str = config.GEMINI_API_KEY,
+                 base_url: str = config.GEMINI_BASE_URL):
+        self.model = model
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.host = self.base_url
+        self.available = bool(api_key)
+
+    def generate(self, prompt: str, system: str = "", num_predict: int = 130,
+                 model: str | None = None, temperature: float = 0.3) -> str:
+        if not self.available:
+            return self._fallback(prompt)
+        mdl = model if (model and ":" not in model) else self.model
+        body = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max(int(num_predict * 3), 300),
+            },
+        }
+        if system:
+            body["systemInstruction"] = {"parts": [{"text": system}]}
+        url = f"{self.base_url}/models/{mdl}:generateContent?key={self.api_key}"
+        data = json.dumps(body).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=data, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=config.LLM_TIMEOUT) as resp:
+                out = json.loads(resp.read())
+                parts = out["candidates"][0]["content"]["parts"]
+                return "".join(p.get("text", "") for p in parts).strip()
+        except urllib.error.HTTPError as exc:
+            raw = ""
+            try:
+                raw = exc.read().decode("utf-8", "replace")
+                detail = json.loads(raw).get("error", {}).get("message", "") or raw
+            except Exception:
+                detail = raw
+            print(f"[Gemini] API 호출 실패: HTTP {exc.code} {detail}".strip()[:400],
+                  file=sys.stderr)
+            return self._fallback(prompt, error=f"HTTP {exc.code}")
+        except (urllib.error.URLError, KeyError, IndexError, TimeoutError) as exc:
+            print(f"[Gemini] 요청 실패: {exc}", file=sys.stderr)
+            return self._fallback(prompt, error=str(exc))
+
+    _fallback = staticmethod(OpenAILLM._fallback)
+
+
 def make_llm():
     """Pick the answer-generation backend from config.
 
-    LLM_BACKEND=gemini (default) -> Google Gemini via its OpenAI-compatible API.
-    LLM_BACKEND=openai            -> GPT-4o.
-    Both use OpenAILLM (only base URL / key / model differ). If the chosen
-    API key is missing, fall back to Ollama (LocalLLM), which itself falls back
-    to a template responder, so the pipeline always runs.
+    LLM_BACKEND=gemini (default) -> Google Gemini (native REST API).
+    LLM_BACKEND=openai            -> GPT-4o (OpenAI API).
+    If the chosen API key is missing, fall back to Ollama (LocalLLM), which
+    itself falls back to a template responder, so the pipeline always runs.
     """
     backend = config.LLM_BACKEND
     if backend == "gemini":
         # GEMINI_API_KEY preferred; fall back to OPENAI_API_KEY for convenience.
         key = config.GEMINI_API_KEY or config.OPENAI_API_KEY
-        llm = OpenAILLM(model=config.GEMINI_MODEL, api_key=key,
-                        base_url=config.GEMINI_BASE_URL)
+        llm = GeminiLLM(api_key=key)
         if llm.available:
             return llm
     elif backend == "openai":
