@@ -236,7 +236,11 @@ class GeminiLLM:
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": temperature,
-                "maxOutputTokens": max(int(num_predict * 3), 300),
+                # Gemini 2.5+/3.x flash spend "thinking" tokens from this budget
+                # before writing the reply, so a tight cap truncates the answer.
+                # Give generous headroom; the system prompt still keeps the reply
+                # to 2-3 sentences.
+                "maxOutputTokens": max(int(num_predict * 8), 1200),
             },
         }
         if system:
