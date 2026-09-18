@@ -185,13 +185,17 @@ class OpenAILLM:
                 body = json.loads(resp.read())
                 return body["choices"][0]["message"]["content"].strip()
         except urllib.error.HTTPError as exc:
-            # OpenAI returns a JSON error body (invalid key, quota, model access);
-            # surface it so failures are debuggable instead of silently falling back.
+            # The API returns a JSON error body (invalid key, quota, model not
+            # found); surface it so failures are debuggable instead of silently
+            # falling back. Fall back to the raw body when it isn't the expected
+            # {"error": {"message": ...}} shape.
+            raw = ""
             try:
-                detail = json.loads(exc.read()).get("error", {}).get("message", "")
+                raw = exc.read().decode("utf-8", "replace")
+                detail = json.loads(raw).get("error", {}).get("message", "") or raw
             except Exception:
-                detail = ""
-            msg = f"HTTP {exc.code} {detail}".strip()
+                detail = raw
+            msg = f"HTTP {exc.code} {detail}".strip()[:400]
             print(f"[OpenAI] API 호출 실패: {msg}", file=sys.stderr)
             return self._fallback(prompt, error=msg)
         except (urllib.error.URLError, KeyError, IndexError, TimeoutError) as exc:
