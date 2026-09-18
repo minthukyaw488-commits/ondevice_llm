@@ -66,7 +66,10 @@ OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
 # only the base URL, key and model name differ. Get a key, then:
 #   LLM_BACKEND=gemini GEMINI_API_KEY=... python demo_cli.py
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+# "…-latest" auto-tracks the current Flash model, so it won't 404 when a
+# specific version is retired for new users (e.g. gemini-2.5-flash was).
+# Override to a pinned version if you prefer, e.g. GEMINI_MODEL=gemini-3.6-flash
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 # Native Gemini REST base (models/<model>:generateContent). Same endpoint the
 # key works with for listing models, so it's more reliable than the
 # OpenAI-compatibility layer (which 404s for some keys/projects).
