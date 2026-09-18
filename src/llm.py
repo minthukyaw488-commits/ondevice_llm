@@ -16,6 +16,7 @@ and is clearly marked so it is never mistaken for a real model answer.
 """
 from __future__ import annotations
 import json
+import sys
 import urllib.error
 import urllib.request
 from typing import List
@@ -180,11 +181,26 @@ class OpenAILLM:
             with urllib.request.urlopen(req, timeout=config.LLM_TIMEOUT) as resp:
                 body = json.loads(resp.read())
                 return body["choices"][0]["message"]["content"].strip()
+        except urllib.error.HTTPError as exc:
+            # OpenAI returns a JSON error body (invalid key, quota, model access);
+            # surface it so failures are debuggable instead of silently falling back.
+            try:
+                detail = json.loads(exc.read()).get("error", {}).get("message", "")
+            except Exception:
+                detail = ""
+            msg = f"HTTP {exc.code} {detail}".strip()
+            print(f"[OpenAI] API 호출 실패: {msg}", file=sys.stderr)
+            return self._fallback(prompt, error=msg)
         except (urllib.error.URLError, KeyError, IndexError, TimeoutError) as exc:
+            print(f"[OpenAI] 요청 실패: {exc}", file=sys.stderr)
             return self._fallback(prompt, error=str(exc))
 
-    # Reuse the same transparent fallback as LocalLLM.
-    _fallback = staticmethod(LocalLLM._fallback)
+    @staticmethod
+    def _fallback(prompt: str, error: str = "") -> str:
+        why = f" ({error})" if error else ""
+        note = f"[GPT-4o API 호출 실패{why} — API 키/크레딧 확인 필요. 아래는 검색된 자료입니다]"
+        # The prompt already carries the retrieved context; return it plainly.
+        return f"{note}\n{prompt.split('참고 자료:', 1)[-1].strip()[:600]}"
 
 
 def make_llm():
