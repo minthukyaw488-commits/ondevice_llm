@@ -49,16 +49,26 @@ RAG_USE_RERANK = os.environ.get("RAG_RERANK", "1") != "0"   # set RAG_RERANK=0 t
 RAG_MIN_RELEVANCE = float(os.environ.get("RAG_MIN_RELEVANCE", "0.25"))
 
 # --- LLM backend ---------------------------------------------------------
-# Answer generation backend: "openai" (GPT-4o via API, default) or "ollama"
-# (local). If the selected backend is unavailable (e.g. no API key, Ollama not
-# running), the pipeline falls back to a transparent template so the rest of
-# the system can still be demonstrated.
-LLM_BACKEND = os.environ.get("LLM_BACKEND", "openai").lower()
+# Answer generation backend: "gemini" (Google Gemini via its OpenAI-compatible
+# API, default — has a free tier), "openai" (GPT-4o), or "ollama" (local). If
+# the selected backend is unavailable (no API key, Ollama not running), the
+# pipeline falls back to Ollama then a transparent template, so the rest of the
+# system can still be demonstrated.
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "gemini").lower()
 
 # OpenAI (GPT-4o). Set your key at runtime:  OPENAI_API_KEY=sk-... python app.py
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
 OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+
+# Google Gemini via its OpenAI-compatible endpoint (free tier from Google AI
+# Studio: https://aistudio.google.com/apikey). Reuses the OpenAI client code —
+# only the base URL, key and model name differ. Get a key, then:
+#   LLM_BACKEND=gemini GEMINI_API_KEY=... python demo_cli.py
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_BASE_URL = os.environ.get(
+    "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")
 
 # --- Local LLM (Ollama) — fallback backend -------------------------------
 # Used when LLM_BACKEND=ollama, or as a fallback when the OpenAI key is absent.

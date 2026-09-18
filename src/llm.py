@@ -159,7 +159,10 @@ class OpenAILLM:
         'exaone3.5:2.4b') is ignored here; only a 'gpt*' override is honoured."""
         if not self.available:
             return self._fallback(prompt)
-        mdl = model if (model and model.startswith("gpt")) else self.model
+        # An Ollama-style override (e.g. the agent's 'exaone3.5:2.4b') carries a
+        # ':' tag; ignore those and keep this backend's own model. A bare API
+        # model name (no ':') is honoured.
+        mdl = model if (model and ":" not in model) else self.model
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -198,7 +201,7 @@ class OpenAILLM:
     @staticmethod
     def _fallback(prompt: str, error: str = "") -> str:
         why = f" ({error})" if error else ""
-        note = f"[GPT-4o API 호출 실패{why} — API 키/크레딧 확인 필요. 아래는 검색된 자료입니다]"
+        note = f"[LLM API 호출 실패{why} — API 키/크레딧 확인 필요. 아래는 검색된 자료입니다]"
         # The prompt already carries the retrieved context; return it plainly.
         return f"{note}\n{prompt.split('참고 자료:', 1)[-1].strip()[:600]}"
 
@@ -206,15 +209,25 @@ class OpenAILLM:
 def make_llm():
     """Pick the answer-generation backend from config.
 
-    LLM_BACKEND=openai (default) -> GPT-4o if OPENAI_API_KEY is set.
-    Falls back to Ollama (LocalLLM), which itself falls back to a template
-    responder, so the pipeline always runs.
+    LLM_BACKEND=gemini (default) -> Google Gemini via its OpenAI-compatible API.
+    LLM_BACKEND=openai            -> GPT-4o.
+    Both use OpenAILLM (only base URL / key / model differ). If the chosen
+    API key is missing, fall back to Ollama (LocalLLM), which itself falls back
+    to a template responder, so the pipeline always runs.
     """
-    if config.LLM_BACKEND == "openai":
+    backend = config.LLM_BACKEND
+    if backend == "gemini":
+        # GEMINI_API_KEY preferred; fall back to OPENAI_API_KEY for convenience.
+        key = config.GEMINI_API_KEY or config.OPENAI_API_KEY
+        llm = OpenAILLM(model=config.GEMINI_MODEL, api_key=key,
+                        base_url=config.GEMINI_BASE_URL)
+        if llm.available:
+            return llm
+    elif backend == "openai":
         llm = OpenAILLM()
         if llm.available:
             return llm
-        # No API key -> try the local Ollama backend instead of failing.
+    # No API key for the chosen backend -> try local Ollama instead of failing.
     return LocalLLM()
 
 

@@ -15,7 +15,7 @@ from src.pipeline import WelfareAssistant
 
 def banner(bot: WelfareAssistant):
     print("=" * 62)
-    print(" 대전 독거노인 복지 안내 · 이상신호 감지 데모 (GPT-4o + 대전 RAG)")
+    print(" 대전 독거노인 복지 안내 · 이상신호 감지 데모 (LLM API + 대전 RAG)")
     print("=" * 62)
     print(f" RAG        : {bot.rag.backend} / {bot.rag.embedder.backend}")
     print(f" LLM        : {type(bot.llm).__name__}:{bot.llm.model} "
