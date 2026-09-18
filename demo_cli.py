@@ -24,9 +24,18 @@ def banner(bot: WelfareAssistant):
     print(" 질문을 입력하세요. 종료하려면 'quit' 또는 '종료'.\n")
 
 
+_RISK_ICON = {"정상": "🟢", "주의": "🟡", "위험": "🔴"}
+
+
 def show(res):
     print(f"\n🤖 {res.answer}")
-    print(f"   📄 근거 문서: {', '.join(sorted(set(res.sources)))}")
+    if res.sources:
+        print(f"   📄 근거 문서: {', '.join(sorted(set(res.sources)))}")
+    risk = res.signal.risk_level
+    line = f"   {_RISK_ICON.get(risk, '🟢')} 이상신호: {risk}"
+    if res.signal.llm_reason:
+        line += f" — {res.signal.llm_reason}"
+    print(line)
     if res.alert:
         print("\n" + "🚨" * 20)
         print(res.alert)

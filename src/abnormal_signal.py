@@ -16,12 +16,22 @@ signal is raised and a summary is generated for the social worker (사회복지�
 All processing is local. Conversation content never leaves the device.
 """
 from __future__ import annotations
+import json
+import re
 import time
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from . import config
+
+
+# Risk levels, lowest to highest, so two assessments can be combined by severity.
+RISK_ORDER = {"정상": 0, "주의": 1, "위험": 2}
+
+
+def _max_risk(a: str, b: str) -> str:
+    return a if RISK_ORDER.get(a, 0) >= RISK_ORDER.get(b, 0) else b
 
 
 # --------------------------------------------------------------------------
@@ -114,6 +124,77 @@ class SignalResult:
     crisis: bool = False
     # Quantified baseline-vs-recent anomaly metrics (empty until enough history).
     metrics: Dict[str, float] = field(default_factory=dict)
+    # Three-level severity ("정상" / "주의" / "위험"), combining rules + LLM judge.
+    risk_level: str = "정상"
+    # Filled when the LLM conversation judge runs (empty otherwise).
+    llm_reason: str = ""
+    llm_summary: str = ""
+
+
+# --------------------------------------------------------------------------
+# (C) LLM conversation judge
+# --------------------------------------------------------------------------
+_JUDGE_SYSTEM = (
+    "당신은 독거노인 돌봄 서비스의 안전 모니터입니다. 어르신의 최근 대화를 읽고 "
+    "위험 신호를 평가합니다. 단순한 정보 질문이나 일상 인사는 '정상'입니다. "
+    "우울·외로움·고립, 건강 악화 호소가 반복되면 '주의', 자살·자해 암시나 "
+    "즉시 도움이 필요한 위기 표현은 '위험'으로 판단합니다. 과잉 경보는 피하되 "
+    "위기 신호는 절대 놓치지 마세요. 반드시 한국어로 판단합니다."
+)
+
+
+def _extract_json(text: str) -> Optional[dict]:
+    """Pull the first {...} object out of an LLM reply (tolerates code fences)."""
+    if not text:
+        return None
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if not m:
+        return None
+    try:
+        obj = json.loads(m.group(0))
+        return obj if isinstance(obj, dict) else None
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+class LLMRiskJudge:
+    """Reads the recent conversation with the LLM and rates the risk level.
+
+    Returns {"risk", "reason", "summary"} or None on any failure, so the
+    rule-based detector always remains the safety net.
+    """
+
+    def __init__(self, llm):
+        self.llm = llm
+
+    def assess(self, history: List[str]) -> Optional[dict]:
+        if not history or self.llm is None or not getattr(self.llm, "available", False):
+            return None
+        convo = "\n".join(f"어르신: {u}" for u in history[-8:])
+        prompt = (
+            "다음은 독거노인 어르신의 최근 대화입니다.\n\n"
+            f"{convo}\n\n"
+            "이 대화에 위험 신호가 있는지 평가하세요. 아래 JSON 형식으로만 답하세요 "
+            "(설명 없이):\n"
+            '{"risk": "정상|주의|위험", "reason": "판단 근거 한 문장", '
+            '"summary": "사회복지사를 위한 한 문장 요약"}'
+        )
+        try:
+            raw = self.llm.generate(prompt, system=_JUDGE_SYSTEM,
+                                    num_predict=200, temperature=0.1)
+            data = _extract_json(raw)
+            if not data:
+                return None
+            risk = str(data.get("risk", "")).strip()
+            if risk not in RISK_ORDER:
+                return None
+            return {
+                "risk": risk,
+                "reason": str(data.get("reason", "")).strip(),
+                "summary": str(data.get("summary", "")).strip(),
+            }
+        except Exception:
+            return None
 
 
 @dataclass
@@ -132,11 +213,20 @@ class AbnormalSignalDetector:
     repeat_threshold: int = config.SYMPTOM_REPEAT_THRESHOLD
     neg_threshold: float = config.NEGATIVE_SENTIMENT_THRESHOLD
     sentiment_min_utterances: int = config.SENTIMENT_MIN_UTTERANCES
+    # Optional LLM (GeminiLLM/OpenAILLM) that judges the conversation as a whole.
+    # None -> rules only; the LLM judge is an additive signal, never required.
+    llm: object = None
+    use_llm: bool = config.USE_LLM_SIGNAL
 
     history: List[str] = field(default_factory=list)
     _neg_scores: List[float] = field(default_factory=list)
     _symptom_counts: Counter = field(default_factory=Counter)
     _records: List[_Utterance] = field(default_factory=list)
+    _judge: Optional["LLMRiskJudge"] = field(default=None, repr=False)
+
+    def __post_init__(self):
+        if self.llm is not None and self.use_llm:
+            self._judge = LLMRiskJudge(self.llm)
 
     def add_utterance(self, text: str, timestamp: Optional[float] = None) -> SignalResult:
         """Record one elderly utterance and re-evaluate the abnormal signal.
@@ -183,13 +273,34 @@ class AbnormalSignalDetector:
             now if now is not None else time.time())
         reasons.extend(anomaly_reasons)
 
+        # --- Rule-based severity -----------------------------------------
+        rule_risk = "위험" if crisis else ("주의" if reasons else "정상")
+
+        # --- LLM conversation judge (additive) ---------------------------
+        final_risk = rule_risk
+        llm_reason = llm_summary = ""
+        if self._judge is not None:
+            assessment = self._judge.assess(self.history)
+            if assessment:
+                llm_reason = assessment["reason"]
+                llm_summary = assessment["summary"]
+                final_risk = _max_risk(final_risk, assessment["risk"])
+                if assessment["risk"] != "정상" and llm_reason:
+                    reasons.append(f"AI 대화 판단({assessment['risk']}): {llm_reason}")
+        # A crisis keyword always forces the highest level, regardless of the LLM.
+        if crisis:
+            final_risk = "위험"
+
         return SignalResult(
-            is_abnormal=bool(reasons),
+            is_abnormal=(final_risk != "정상"),
             reasons=reasons,
             avg_negative=avg_neg,
             symptom_counts=dict(self._symptom_counts),
             crisis=crisis,
             metrics=metrics,
+            risk_level=final_risk,
+            llm_reason=llm_reason,
+            llm_summary=llm_summary,
         )
 
     def _baseline_metrics(self, now: float):

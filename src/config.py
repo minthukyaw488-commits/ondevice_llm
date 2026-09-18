@@ -110,6 +110,11 @@ WHISPER_LANGUAGE = "ko"   # elderly speak Korean
 # --- Abnormal signal detection ------------------------------------------
 # Public Korean sentiment model (no auth / token needed).
 SENTIMENT_MODEL = "sangrimlee/bert-base-multilingual-cased-nsmc"
+# LLM conversation judge: when on and an LLM is available, the detector also
+# asks the LLM to rate the whole conversation (정상/주의/위험) and combines it
+# with the rules (taking the higher severity). Rules remain the safety net, so
+# turning this off (USE_LLM_SIGNAL=0) falls back to rules-only detection.
+USE_LLM_SIGNAL = os.environ.get("USE_LLM_SIGNAL", "1") not in ("0", "false", "False", "")
 # Fallback smaller multilingual option is handled in abnormal_signal.py.
 
 # Symptom keywords to track across the conversation history. Grouped so that

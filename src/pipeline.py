@@ -48,8 +48,10 @@ class WelfareAssistant:
         self.user_name = user_name
         self.rag = RagPipeline()
         self.rag.index()                         # build the welfare index once
-        self.llm = make_llm()               # GPT-4o (API) or local Ollama fallback
-        self.detector = AbnormalSignalDetector()  # accumulates history
+        self.llm = make_llm()               # Gemini/GPT-4o (API) or Ollama fallback
+        # The detector also uses the LLM to judge the conversation (정상/주의/위험),
+        # with the keyword/sentiment rules as the safety net.
+        self.detector = AbnormalSignalDetector(llm=self.llm)  # accumulates history
         self.alerts = AlertDispatcher()           # local log (+ opt-in channels)
         self._stt = None                          # Whisper, loaded on first use
         self.use_agent = config.USE_AGENT         # answer via tool-calling agent
@@ -116,7 +118,7 @@ class WelfareAssistant:
         if not signal.is_abnormal:
             return None
         alert = self._build_alert(signal)
-        urgency = "긴급" if signal.crisis else "주의"
+        urgency = "긴급" if (signal.crisis or signal.risk_level == "위험") else "주의"
         self.alerts.dispatch(self.user_name, urgency, alert)  # log + notify
         return alert
 
@@ -125,7 +127,8 @@ class WelfareAssistant:
 
         Reuses the already-loaded sentiment model so no reload is needed.
         """
-        self.detector = AbnormalSignalDetector(sentiment=self.detector.sentiment)
+        self.detector = AbnormalSignalDetector(
+            sentiment=self.detector.sentiment, llm=self.llm)
 
     def transcribe(self, audio_path: str) -> str:
         """Speech-to-text only (Whisper loaded once, then cached)."""
@@ -141,14 +144,16 @@ class WelfareAssistant:
     def _build_alert(self, signal: SignalResult) -> str:
         """Generate a concise Korean alert summary for the 사회복지사."""
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-        urgency = "긴급" if signal.crisis else "주의"
+        urgency = "긴급" if (signal.crisis or signal.risk_level == "위험") else "주의"
         lines = [
-            f"[{urgency}] 독거노인 이상신호 알림 - {self.user_name}",
+            f"[{urgency}] 독거노인 이상신호 알림 ({signal.risk_level}) - {self.user_name}",
             f"발생시각: {stamp}",
             f"대화 횟수: {len(self.detector.history)}회 / 평균 부정감정: "
             f"{signal.avg_negative:.2f}",
-            "감지 근거:",
         ]
+        if signal.llm_summary:
+            lines.append(f"AI 요약: {signal.llm_summary}")
+        lines.append("감지 근거:")
         lines += [f"  - {r}" for r in signal.reasons]
         if signal.symptom_counts:
             top = ", ".join(f"{k}({v}회)" for k, v in signal.symptom_counts.items())
