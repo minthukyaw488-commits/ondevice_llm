@@ -23,6 +23,13 @@ from typing import List
 
 from . import config
 
+# Some API gateways sit behind Cloudflare, which blocks urllib's default
+# "Python-urllib/x" User-Agent with HTTP 403 (error 1010). Send a normal
+# browser-like UA so requests get through.
+_USER_AGENT = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/122.0.0.0 Safari/537.36")
+
 
 ANSWER_SYSTEM_PROMPT = (
     "당신은 대전광역시 독거노인을 돕는 친절한 복지 안내 도우미입니다.\n"
@@ -179,6 +186,7 @@ class OpenAILLM:
         req = urllib.request.Request(
             f"{self.base_url}/chat/completions", data=data,
             headers={"Content-Type": "application/json",
+                     "User-Agent": _USER_AGENT,
                      "Authorization": f"Bearer {self.api_key}"})
         try:
             with urllib.request.urlopen(req, timeout=config.LLM_TIMEOUT) as resp:
@@ -248,7 +256,8 @@ class GeminiLLM:
         url = f"{self.base_url}/models/{mdl}:generateContent?key={self.api_key}"
         data = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(
-            url, data=data, headers={"Content-Type": "application/json"})
+            url, data=data, headers={"Content-Type": "application/json",
+                                     "User-Agent": _USER_AGENT})
         try:
             with urllib.request.urlopen(req, timeout=config.LLM_TIMEOUT) as resp:
                 out = json.loads(resp.read())
