@@ -16,12 +16,27 @@ and is clearly marked so it is never mistaken for a real model answer.
 """
 from __future__ import annotations
 import json
+import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from typing import List
 
 from . import config
+
+# Retry on HTTP 429 (rate limit). Free API tiers (e.g. Groq TPM caps) return
+# 429 with a "try again in Xs" hint; wait that long and retry so batch jobs
+# (eval, comparison) finish instead of dropping to the fallback.
+_MAX_RETRIES = 5
+_RETRY_AFTER_RE = re.compile(r"try again in ([0-9.]+)\s*s", re.IGNORECASE)
+
+
+def _retry_wait(detail: str, attempt: int) -> float:
+    m = _RETRY_AFTER_RE.search(detail or "")
+    if m:
+        return min(float(m.group(1)) + 0.5, 30.0)
+    return min(2.0 ** attempt, 30.0)   # exponential backoff, capped
 
 # Some API gateways sit behind Cloudflare, which blocks urllib's default
 # "Python-urllib/x" User-Agent with HTTP 403 (error 1010). Send a normal
@@ -183,32 +198,36 @@ class OpenAILLM:
             "max_tokens": max(int(num_predict * 3), 300),
         }
         data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            f"{self.base_url}/chat/completions", data=data,
-            headers={"Content-Type": "application/json",
-                     "User-Agent": _USER_AGENT,
-                     "Authorization": f"Bearer {self.api_key}"})
-        try:
-            with urllib.request.urlopen(req, timeout=config.LLM_TIMEOUT) as resp:
-                body = json.loads(resp.read())
-                return body["choices"][0]["message"]["content"].strip()
-        except urllib.error.HTTPError as exc:
-            # The API returns a JSON error body (invalid key, quota, model not
-            # found); surface it so failures are debuggable instead of silently
-            # falling back. Fall back to the raw body when it isn't the expected
-            # {"error": {"message": ...}} shape.
-            raw = ""
+        for attempt in range(_MAX_RETRIES):
+            req = urllib.request.Request(
+                f"{self.base_url}/chat/completions", data=data,
+                headers={"Content-Type": "application/json",
+                         "User-Agent": _USER_AGENT,
+                         "Authorization": f"Bearer {self.api_key}"})
             try:
-                raw = exc.read().decode("utf-8", "replace")
-                detail = json.loads(raw).get("error", {}).get("message", "") or raw
-            except Exception:
-                detail = raw
-            msg = f"HTTP {exc.code} {detail}".strip()[:400]
-            print(f"[OpenAI] API 호출 실패: {msg}", file=sys.stderr)
-            return self._fallback(prompt, error=msg)
-        except (urllib.error.URLError, KeyError, IndexError, TimeoutError) as exc:
-            print(f"[OpenAI] 요청 실패: {exc}", file=sys.stderr)
-            return self._fallback(prompt, error=str(exc))
+                with urllib.request.urlopen(req, timeout=config.LLM_TIMEOUT) as resp:
+                    body = json.loads(resp.read())
+                    return body["choices"][0]["message"]["content"].strip()
+            except urllib.error.HTTPError as exc:
+                # The API returns a JSON error body (invalid key, quota, model
+                # not found); surface it so failures are debuggable. Fall back
+                # to the raw body when it isn't {"error": {"message": ...}}.
+                raw = ""
+                try:
+                    raw = exc.read().decode("utf-8", "replace")
+                    detail = json.loads(raw).get("error", {}).get("message", "") or raw
+                except Exception:
+                    detail = raw
+                if exc.code == 429 and attempt < _MAX_RETRIES - 1:
+                    time.sleep(_retry_wait(detail, attempt))   # rate limit: wait + retry
+                    continue
+                msg = f"HTTP {exc.code} {detail}".strip()[:400]
+                print(f"[OpenAI] API 호출 실패: {msg}", file=sys.stderr)
+                return self._fallback(prompt, error=msg)
+            except (urllib.error.URLError, KeyError, IndexError, TimeoutError) as exc:
+                print(f"[OpenAI] 요청 실패: {exc}", file=sys.stderr)
+                return self._fallback(prompt, error=str(exc))
+        return self._fallback(prompt, error="rate limit")
 
     @staticmethod
     def _fallback(prompt: str, error: str = "") -> str:
@@ -255,27 +274,32 @@ class GeminiLLM:
             body["systemInstruction"] = {"parts": [{"text": system}]}
         url = f"{self.base_url}/models/{mdl}:generateContent?key={self.api_key}"
         data = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(
-            url, data=data, headers={"Content-Type": "application/json",
-                                     "User-Agent": _USER_AGENT})
-        try:
-            with urllib.request.urlopen(req, timeout=config.LLM_TIMEOUT) as resp:
-                out = json.loads(resp.read())
-                parts = out["candidates"][0]["content"]["parts"]
-                return "".join(p.get("text", "") for p in parts).strip()
-        except urllib.error.HTTPError as exc:
-            raw = ""
+        for attempt in range(_MAX_RETRIES):
+            req = urllib.request.Request(
+                url, data=data, headers={"Content-Type": "application/json",
+                                         "User-Agent": _USER_AGENT})
             try:
-                raw = exc.read().decode("utf-8", "replace")
-                detail = json.loads(raw).get("error", {}).get("message", "") or raw
-            except Exception:
-                detail = raw
-            print(f"[Gemini] API 호출 실패: HTTP {exc.code} {detail}".strip()[:400],
-                  file=sys.stderr)
-            return self._fallback(prompt, error=f"HTTP {exc.code}")
-        except (urllib.error.URLError, KeyError, IndexError, TimeoutError) as exc:
-            print(f"[Gemini] 요청 실패: {exc}", file=sys.stderr)
-            return self._fallback(prompt, error=str(exc))
+                with urllib.request.urlopen(req, timeout=config.LLM_TIMEOUT) as resp:
+                    out = json.loads(resp.read())
+                    parts = out["candidates"][0]["content"]["parts"]
+                    return "".join(p.get("text", "") for p in parts).strip()
+            except urllib.error.HTTPError as exc:
+                raw = ""
+                try:
+                    raw = exc.read().decode("utf-8", "replace")
+                    detail = json.loads(raw).get("error", {}).get("message", "") or raw
+                except Exception:
+                    detail = raw
+                if exc.code == 429 and attempt < _MAX_RETRIES - 1:
+                    time.sleep(_retry_wait(detail, attempt))   # rate limit: wait + retry
+                    continue
+                print(f"[Gemini] API 호출 실패: HTTP {exc.code} {detail}".strip()[:400],
+                      file=sys.stderr)
+                return self._fallback(prompt, error=f"HTTP {exc.code}")
+            except (urllib.error.URLError, KeyError, IndexError, TimeoutError) as exc:
+                print(f"[Gemini] 요청 실패: {exc}", file=sys.stderr)
+                return self._fallback(prompt, error=str(exc))
+        return self._fallback(prompt, error="rate limit")
 
     _fallback = staticmethod(OpenAILLM._fallback)
 
