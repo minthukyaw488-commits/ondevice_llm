@@ -17,6 +17,9 @@ import requests
 OLLAMA = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "bge-m3")
 CHAT_MODEL = os.environ.get("CHAT_MODEL", "exaone3.5:2.4b")   # 강의는 llama3.1:8b
+# 상위 몇 조각을 근거로 쓸지. 자료가 많을수록(수백~수천 조각) 3개로는 정답
+# 조각이 밀려날 수 있어 기본을 5로. RAG_TOPK 로 조절.
+TOPK = int(os.environ.get("RAG_TOPK", "5"))
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 VECS = np.load(os.path.join(HERE, "vectors.npy"))
@@ -33,7 +36,7 @@ def embed(t: str):
     return np.array(r.json()["embedding"])
 
 
-def search(q: str, k: int = 3):
+def search(q: str, k: int = TOPK):
     """질문과 가장 가까운 조각 k개 — 코사인 유사도 (강의 slide 67)."""
     qv = embed(q)
     sims = VECS @ qv / (np.linalg.norm(VECS, axis=1) * np.linalg.norm(qv) + 1e-9)
