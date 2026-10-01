@@ -18,6 +18,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ask  # noqa: E402  (search, ask, CHAT_MODEL, CHUNKS 재사용)
 
 EXIT_WORDS = {"exit", "quit", "q", "종료", "끝", "그만"}
+# 기본은 답변만 보여준다(챗봇 느낌). 근거(출처·유사도)를 함께 보려면
+# SHOW_SOURCES=1 로 켠다 — 발표에서 "자료만 근거로" 를 증명할 때 유용.
+SHOW_SOURCES = os.environ.get("SHOW_SOURCES", "0") not in ("0", "", "false", "no")
 
 
 def main():
@@ -48,11 +51,12 @@ def main():
             print(f"  (오류: {e} — Ollama 실행 여부를 확인하세요)")
             continue
 
-        top_sim = hits[0][2] if hits else 0.0
         print(f"\n🤖 도우미 > {answer.strip()}")
-        print(f"\n   근거 (상위 유사도 {top_sim:.3f}):")
-        for c, src, s in hits:
-            print(f"     [{s:.3f}] ({src}) {c[:60].strip()}…")
+        if SHOW_SOURCES:                             # 발표용: 근거(출처·유사도)
+            top_sim = hits[0][2] if hits else 0.0
+            print(f"\n   근거 (상위 유사도 {top_sim:.3f}):")
+            for c, src, s in hits:
+                print(f"     [{s:.3f}] ({src}) {c[:60].strip()}…")
 
 
 if __name__ == "__main__":
