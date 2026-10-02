@@ -307,10 +307,14 @@ class GeminiLLM:
 def make_llm():
     """Pick the answer-generation backend from config.
 
-    LLM_BACKEND=gemini (default) -> Google Gemini (native REST API).
-    LLM_BACKEND=openai            -> GPT-4o (OpenAI API).
-    If the chosen API key is missing, fall back to Ollama (LocalLLM), which
-    itself falls back to a template responder, so the pipeline always runs.
+    LLM_BACKEND=ollama (default) -> ON-DEVICE local model (Ollama · EXAONE 3.5);
+                                    nothing leaves the machine. This is the core
+                                    design and the default.
+    LLM_BACKEND=gemini            -> Google Gemini (native REST API) — OPTIONAL
+                                    cloud backend, only when explicitly set.
+    LLM_BACKEND=openai            -> GPT-4o (OpenAI API) — OPTIONAL cloud backend.
+    A cloud backend with no key falls back to local Ollama, which itself falls
+    back to a template responder, so the pipeline always runs on-device.
     """
     backend = config.LLM_BACKEND
     if backend == "gemini":
@@ -323,7 +327,7 @@ def make_llm():
         llm = OpenAILLM()
         if llm.available:
             return llm
-    # No API key for the chosen backend -> try local Ollama instead of failing.
+    # Default (ollama) and the cloud-key-missing case both run on-device.
     return LocalLLM()
 
 

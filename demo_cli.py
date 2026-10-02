@@ -14,13 +14,17 @@ from src.pipeline import WelfareAssistant
 
 
 def banner(bot: WelfareAssistant):
+    # Is the answer model running locally (on-device) or via a cloud API?
+    local = type(bot.llm).__name__ == "LocalLLM"
+    mode = "온디바이스(로컬 실행)" if local else "클라우드 API"
     print("=" * 62)
-    print(" 대전 독거노인 복지 안내 · 이상신호 감지 데모 (LLM API + 대전 RAG)")
+    print(" 대전 독거노인 복지 안내 · 이상신호 감지 데모 (온디바이스 · 대전 RAG)")
     print("=" * 62)
-    print(f" RAG        : {bot.rag.backend} / {bot.rag.embedder.backend}")
+    print(f" 실행 방식  : {mode}" + ("  — 대화가 기기를 벗어나지 않음" if local else ""))
+    print(f" RAG        : {bot.rag.backend} / {bot.rag.embedder.backend} (로컬)")
     print(f" LLM        : {type(bot.llm).__name__}:{bot.llm.model} "
           f"({'실행 중' if bot.llm.available else '미실행 → 템플릿 대체'})")
-    print(f" 감정 분석  : {bot.detector.sentiment.backend}")
+    print(f" 감정 분석  : {bot.detector.sentiment.backend} (로컬)")
     print(" 질문을 입력하세요. 종료하려면 'quit' 또는 '종료'.\n")
 
 
