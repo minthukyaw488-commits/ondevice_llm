@@ -37,16 +37,18 @@ def no_rag_answer(bot: WelfareAssistant, q: str) -> str:
 
 
 def rag_answer(bot: WelfareAssistant, q: str):
-    """검색 → 관련성 게이트 → 근거 기반 답변 (RAG 사용)."""
+    """검색 → 관련성 게이트 → 근거 기반 답변 (RAG 사용).
+    반환: (답변, 출처 목록, 참고한 근거 조각 미리보기)."""
     retrieved = bot.rag.retrieve(q)
     top = retrieved[0].score if retrieved else 0.0
     if not retrieved or top < config.RAG_MIN_RELEVANCE:
         from src.llm import OFF_DOMAIN_REPLY
-        return OFF_DOMAIN_REPLY, []               # 자료에 없음 → 안전하게 안내
+        return OFF_DOMAIN_REPLY, [], ""           # 자료에 없음 → 안전하게 안내
     contexts = [r.text for r in retrieved]
     answer = bot.llm.generate(build_answer_prompt(q, contexts),
                               system=ANSWER_SYSTEM_PROMPT).strip()
-    return answer, sorted(set(r.source for r in retrieved))
+    preview = " / ".join(r.text[:70].replace("\n", " ").strip() for r in retrieved[:2])
+    return answer, sorted(set(r.source for r in retrieved)), preview
 
 
 def main():
@@ -59,15 +61,17 @@ def main():
 
     for q in questions:
         print("=" * 74)
-        print(f"❓ 질문: {q}\n")
-        print("─" * 74)
-        print("❌ RAG 미사용 (LLM만, 문서 근거 없음)")
+        print(f"[질문] {q}\n")
+        print("-" * 74)
+        print("[RAG 미사용 - LLM만, 문서 근거 없음]")
         print(f"   {no_rag_answer(bot, q)}\n")
-        ans, srcs = rag_answer(bot, q)
-        print("✅ RAG 사용 (대전 공공문서 근거)")
+        ans, srcs, preview = rag_answer(bot, q)
+        print("[RAG 사용 - 대전 공공문서 근거]")
         print(f"   {ans}")
         if srcs:
-            print(f"   📄 근거: {', '.join(srcs)}")
+            print(f"   출처: {', '.join(srcs)}")
+        if preview:
+            print(f"   참고한 근거: {preview} ...")
         print()
 
 
