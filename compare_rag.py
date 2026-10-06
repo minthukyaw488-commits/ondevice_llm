@@ -47,6 +47,8 @@ def rag_answer(bot: WelfareAssistant, q: str):
     contexts = [r.text for r in retrieved]
     answer = bot.llm.generate(build_answer_prompt(q, contexts),
                               system=ANSWER_SYSTEM_PROMPT).strip()
+    if not answer:   # 모델이 빈 응답을 준 경우에도 데모가 공백으로 보이지 않게
+        answer = "(검색된 근거에 해당 내용이 부족해 모델이 답변을 생성하지 못했습니다)"
     preview = " / ".join(r.text[:70].replace("\n", " ").strip() for r in retrieved[:2])
     return answer, sorted(set(r.source for r in retrieved)), preview
 
