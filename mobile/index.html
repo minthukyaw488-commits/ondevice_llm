@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>대전노인복지 HUB · 온디바이스</title>
+<style>
+  :root{
+    --bg:#f3f6fb; --card:#ffffff; --ink:#1a2b4a; --sub:#5b6b86;
+    --brand:#1d6fe0; --brand-d:#1559b8; --ok:#1f9d57; --line:#d9e2f0;
+    --bot:#eef3fb; --me:#1d6fe0;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:-apple-system,"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+    background:var(--bg); color:var(--ink);
+    display:flex; flex-direction:column; height:100dvh; overflow:hidden;
+  }
+  header{
+    background:linear-gradient(135deg,var(--brand),var(--brand-d));
+    color:#fff; padding:14px 16px; flex:0 0 auto; box-shadow:0 2px 8px rgba(29,111,224,.25);
+  }
+  header h1{margin:0;font-size:19px;font-weight:800;letter-spacing:-.3px}
+  .ondevice{
+    display:inline-flex;align-items:center;gap:6px;margin-top:6px;
+    background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);
+    padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:600;
+  }
+  .dot{width:8px;height:8px;border-radius:50%;background:#7CFFB0;box-shadow:0 0 0 0 rgba(124,255,176,.7);animation:p 1.8s infinite}
+  @keyframes p{0%{box-shadow:0 0 0 0 rgba(124,255,176,.6)}70%{box-shadow:0 0 0 7px rgba(124,255,176,0)}100%{box-shadow:0 0 0 0 rgba(124,255,176,0)}}
+
+  #load{flex:0 0 auto;padding:12px 16px;background:#fff7e6;border-bottom:1px solid #f0e2bd;color:#7a5a12;font-size:13.5px}
+  #load.err{background:#fdecec;border-color:#f3c3c3;color:#b02525}
+  #load.done{display:none}
+  .bar{height:8px;background:#eadfbf;border-radius:6px;margin-top:8px;overflow:hidden}
+  .bar > i{display:block;height:100%;width:0;background:var(--brand);transition:width .3s}
+
+  main{flex:1 1 auto;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+  .row{display:flex;gap:9px;align-items:flex-end;max-width:92%}
+  .row.me{align-self:flex-end;flex-direction:row-reverse}
+  .av{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:18px;background:var(--bot)}
+  .row.me .av{background:var(--me)}
+  .bub{padding:11px 14px;border-radius:16px;font-size:16.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+  .bot .bub{background:var(--bot);border-bottom-left-radius:5px}
+  .me .bub{background:var(--me);color:#fff;border-bottom-right-radius:5px}
+  .src{margin-top:6px;font-size:12px;color:var(--sub)}
+  .typing{display:inline-flex;gap:4px}
+  .typing i{width:7px;height:7px;border-radius:50%;background:#9fb2cf;animation:b 1.2s infinite}
+  .typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+  @keyframes b{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-5px);opacity:1}}
+
+  .chips{display:flex;gap:8px;overflow-x:auto;padding:8px 16px 0;flex:0 0 auto}
+  .chip{flex:0 0 auto;background:#fff;border:1px solid var(--line);color:var(--brand-d);
+    padding:8px 13px;border-radius:999px;font-size:13.5px;font-weight:600}
+  .chip:active{background:var(--bot)}
+
+  footer{flex:0 0 auto;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid var(--line);display:flex;gap:9px}
+  #q{flex:1;border:1.5px solid var(--line);border-radius:22px;padding:12px 16px;font-size:16.5px;outline:none}
+  #q:focus{border-color:var(--brand)}
+  #send{flex:0 0 auto;width:52px;border:0;border-radius:50%;background:var(--brand);color:#fff;font-size:22px;font-weight:700}
+  #send:disabled{background:#aebfd8}
+  .note{font-size:11.5px;color:var(--sub);text-align:center;padding:0 16px 8px;background:#fff}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏠 대전노인복지 HUB</h1>
+  <span class="ondevice"><span class="dot"></span>온디바이스 · 이 대화는 휴대폰 안에서 실행됩니다</span>
+</header>
+
+<div id="load">⏳ AI 모델을 휴대폰에 준비하는 중입니다… (처음 한 번만, 잠시 걸립니다)
+  <div class="bar"><i id="barfill"></i></div>
+</div>
+
+<main id="chat"></main>
+
+<div class="chips" id="chips"></div>
+<div class="note" id="note">※ 정보는 참고용입니다. 정확한 신청은 주민센터(행정복지센터)에 확인하세요.</div>
+
+<footer>
+  <input id="q" placeholder="복지 서비스를 물어보세요…" autocomplete="off" disabled />
+  <button id="send" disabled>➤</button>
+</footer>
+
+<script type="module">
+import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+
+/* ── 대전 독거노인 복지 자료 (RAG 지식베이스) ───────────────────────────
+   src 프로젝트의 daejeon_welfare_sample.md 와 동일한 내용. 답변은 이 자료
+   '만' 근거로 생성되어 환각을 막는다(교수님 강의 slide 60과 동일 원리). */
+const KB = [
+  {t:"노인맞춤돌봄서비스", k:["돌봄","방문","안부","말벗","생활지원사","혼자","외로","가사","병원 동행"],
+   c:"혼자 생활이 어려운 만 65세 이상 어르신에게 생활지원사가 정기적으로 방문하거나 안부 전화를 드립니다. 안전 확인·가사 지원·병원 동행·말벗 서비스를 제공합니다. 신청은 관할 주민센터(행정복지센터)에서 접수합니다."},
+  {t:"기초연금", k:["기초연금","연금","노령연금","65세","용돈","매월","소득"],
+   c:"만 65세 이상이고 소득인정액이 기준액 이하인 어르신에게 매월 연금을 지급합니다. 2024년 단독가구 선정 기준액은 월 213만 원, 최대 지급액은 약 33만 원입니다. 신청은 주민센터 또는 국민연금공단 지사에서 하며 신분증과 통장 사본이 필요합니다."},
+  {t:"응급안전안심서비스", k:["응급","화재","가스","버튼","감지기","119","안전","위급","넘어"],
+   c:"가정에 화재·가스 감지기와 응급버튼을 무료로 설치해, 응급 상황 시 119와 지역센터로 자동 연결됩니다. 만 65세 이상 독거노인 및 노인 2인 가구가 대상입니다. 신청은 주민센터 또는 대전사회서비스원에 문의합니다."},
+  {t:"무료 급식·도시락 배달", k:["급식","도시락","밥","식사","경로식당","배달","밑반찬","먹을"],
+   c:"경제적으로 어려운 어르신에게 경로식당 무료 급식 또는 도시락·밑반찬 배달을 지원합니다. 거동이 불편한 독거노인은 도시락 배달 대상이 될 수 있습니다. 신청: 관할 주민센터, 지역 노인복지관."},
+  {t:"치매안심센터", k:["치매","기억","깜빡","검진","인지","건망"],
+   c:"대전 각 구(유성·서·중·동·대덕구)의 치매안심센터에서 무료 치매 조기검진, 상담, 인지강화 프로그램, 가족 지원을 제공합니다. 기억력 저하가 걱정되면 가까운 치매안심센터에서 무료 검진을 받을 수 있습니다."},
+  {t:"방문건강관리", k:["방문건강","간호사","혈압","혈당","당뇨","고혈압","만성질환","복약","건강"],
+   c:"보건소 간호사가 거동이 불편하거나 만성질환이 있는 어르신 가정을 방문해 혈압·혈당 측정, 복약 지도, 건강 상담을 제공합니다. 신청은 주소지 관할 보건소입니다."},
+  {t:"노인 일자리", k:["일자리","일","활동","소득","시니어클럽","용돈 벌","사회활동"],
+   c:"만 65세 이상 어르신에게 공익활동·사회서비스형 일자리를 연계해 소득과 사회 참여 기회를 제공합니다. 신청은 대전시니어클럽, 시니어클럽, 노인복지관에서 접수합니다."},
+  {t:"정신건강·마음 상담", k:["우울","외로","불면","잠","마음","상담","힘들","슬프","죽고 싶","자살","109"],
+   c:"우울감·외로움·불면 등 정서적 어려움을 겪는 어르신에게 무료 심리상담과 정신건강 서비스를 제공합니다. 자살예방 상담은 24시간 가능합니다. 문의: 대전광역시 정신건강복지센터, 자살예방상담전화 109."},
+  {t:"에너지 바우처(냉·난방비)", k:["난방","냉방","바우처","전기","가스비","더위","추위","에너지","냉방비","난방비"],
+   c:"경제적으로 어려운 독거노인 가구에 여름 냉방비·겨울 난방비를 바우처로 지원합니다. 기초생활수급자 중 노인 가구가 주요 대상입니다. 신청: 주민센터."},
+  {t:"경로우대·교통", k:["지하철","무임","교통","경로우대","도시철도","버스","교통카드"],
+   c:"만 65세 이상 어르신은 도시철도(지하철) 무임 승차가 가능하고 일부 공공시설 입장료 감면을 받습니다. 경로우대 교통카드는 주민센터에서 발급 문의할 수 있습니다."},
+];
+
+/* ── 간단 검색(RAG) : 질문과 키워드가 겹치는 자료 상위 2개 ─────────────── */
+function retrieve(query){
+  const q = query.replace(/\s/g,"");
+  const scored = KB.map(e=>{
+    let s=0;
+    for(const kw of e.k) if(q.includes(kw.replace(/\s/g,""))) s+=2;
+    for(const ch of [...new Set(q)]) if(ch.length===1 && e.c.includes(ch)) s+=0.02;
+    return {e,s};
+  }).sort((a,b)=>b.s-a.s);
+  return scored.filter(x=>x.s>=2).slice(0,2).map(x=>x.e);
+}
+
+/* ── 프롬프트 : "자료만 근거로" (환각 차단) ─────────────────────────────── */
+function buildMessages(query, hits){
+  const ctx = hits.length
+    ? hits.map(h=>`[${h.t}] ${h.c}`).join("\n\n")
+    : "(관련 자료 없음)";
+  const sys =
+    "당신은 대전광역시 독거노인을 돕는 복지 상담 도우미입니다. "+
+    "아래 [자료]만 근거로, 어르신께 짧고 공손한 한국어 존댓말로 2~3문장 안에 답하세요. "+
+    "자료에 없는 내용은 지어내지 말고 '자료에 없습니다. 가까운 주민센터에 문의하세요'라고 답하세요. "+
+    "인사나 잡담에는 따뜻하게 한 문장으로 답하세요.\n\n[자료]\n"+ctx;
+  return [{role:"system",content:sys},{role:"user",content:query}];
+}
+
+/* ── UI ──────────────────────────────────────────────────────────────── */
+const chat=document.getElementById("chat"), q=document.getElementById("q"),
+      send=document.getElementById("send"), load=document.getElementById("load"),
+      bar=document.getElementById("barfill"), chipsEl=document.getElementById("chips");
+
+function addMsg(who, text, srcs){
+  const row=document.createElement("div"); row.className="row "+who;
+  const av=document.createElement("div"); av.className="av"; av.textContent=who==="me"?"🙂":"🤖";
+  const wrap=document.createElement("div");
+  const bub=document.createElement("div"); bub.className="bub"; bub.textContent=text; wrap.appendChild(bub);
+  if(srcs&&srcs.length){const s=document.createElement("div");s.className="src";s.textContent="📄 근거: "+srcs.map(x=>x.t).join(", ");wrap.appendChild(s);}
+  row.append(av,wrap); chat.append(row); chat.scrollTop=chat.scrollHeight; return bub;
+}
+const CHIPS=["기초연금은 어떻게 신청하나요?","혼자 지내는데 안부를 봐 줄 사람이 있나요?","겨울 난방비 지원 받을 수 있나요?","무료로 밥 먹을 수 있는 곳 있나요?"];
+CHIPS.forEach(t=>{const b=document.createElement("button");b.className="chip";b.textContent=t;b.onclick=()=>{q.value=t;ask();};chipsEl.append(b);});
+
+/* ── 모델 로드 (휴대폰 안에서) ───────────────────────────────────────── */
+let engine=null, busy=false;
+const MODEL="Qwen2.5-1.5B-Instruct-q4f16_1-MLC";   // 작고 한국어 가능, 휴대폰용
+
+async function boot(){
+  if(!navigator.gpu){
+    load.className="err";
+    load.innerHTML="⚠️ 이 브라우저는 WebGPU를 지원하지 않아 모델을 휴대폰에서 실행할 수 없습니다.<br>최신 <b>Chrome(안드로이드)</b> 또는 <b>Safari 18+(아이폰)</b>에서 열어 주세요.";
+    return;
+  }
+  try{
+    engine = await webllm.CreateMLCEngine(MODEL,{
+      initProgressCallback:(p)=>{
+        const pct=Math.round((p.progress||0)*100);
+        bar.style.width=pct+"%";
+        load.firstChild.textContent=`⏳ AI 모델을 휴대폰에 준비하는 중… ${pct}%  (처음 한 번만)`;
+      }
+    });
+    load.className="done";
+    q.disabled=false; send.disabled=false; q.focus();
+    addMsg("bot","안녕하세요, 어르신. 대전 복지 도우미입니다. 😊\n궁금하신 복지 서비스를 편하게 물어보세요.");
+  }catch(e){
+    load.className="err";
+    load.textContent="⚠️ 모델 로드 실패: "+(e.message||e)+" — 인터넷 연결(첫 1회) 후 새로고침 해 주세요.";
+  }
+}
+
+async function ask(){
+  const text=q.value.trim(); if(!text||busy||!engine) return;
+  busy=true; q.value=""; send.disabled=true;
+  addMsg("me",text);
+  const hits=retrieve(text);
+  const bub=addMsg("bot",""); bub.innerHTML='<span class="typing"><i></i><i></i><i></i></span>';
+  try{
+    const stream=await engine.chat.completions.create({
+      messages:buildMessages(text,hits), temperature:0.3, stream:true
+    });
+    let out="";
+    for await(const ch of stream){ out+=ch.choices[0]?.delta?.content||""; bub.textContent=out; chat.scrollTop=chat.scrollHeight; }
+    if(hits.length){const s=document.createElement("div");s.className="src";s.textContent="📄 근거: "+hits.map(x=>x.t).join(", ");bub.parentNode.appendChild(s);}
+  }catch(e){ bub.textContent="죄송합니다. 다시 한 번 말씀해 주세요. ("+(e.message||e)+")"; }
+  busy=false; send.disabled=false; q.focus();
+}
+send.onclick=ask;
+q.addEventListener("keydown",e=>{if(e.key==="Enter")ask();});
+boot();
+</script>
+</body>
+</html>
