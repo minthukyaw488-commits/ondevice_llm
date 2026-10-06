@@ -1,13 +1,15 @@
 # 대전 독거노인 복지 안내 · 이상신호 감지 시스템
 ### On-device LLM + RAG for elderly welfare (Daejeon)
 
-대전광역시 독거노인을 위한 **완전 로컬 실행** 음성·문자 AI입니다.
-어르신이 음성 또는 글로 복지 관련 질문을 하면 **문서에 근거해 답변**하고,
-대화 속 반복 증상 호소나 정서적 이상신호를 감지해 **사회복지사에게 알림**을
-보냅니다.
+대전광역시 독거노인을 위한 음성·문자 AI입니다. 어르신이 음성 또는 글로 복지
+관련 질문을 하면 **대전 공공문서에 근거해(RAG) LLM이 답변**하고, 대화 속 반복
+증상 호소나 정서적 이상신호를 감지해 **사회복지사에게 알림**을 보냅니다.
 
-> **개인정보 보호 원칙**: LLM·검색·재랭킹·음성인식 등 모든 처리가 기기 안에서
-> 실행됩니다. 대화 내용은 절대 외부(클라우드 API 등)로 전송되지 않습니다.
+> **구성 원칙**: 답변은 **클라우드 LLM API(GPT-4o 등)** 와 **RAG**로 생성합니다.
+> LLM은 언어 능력을, RAG는 대전 공공데이터에 대한 **근거**를 제공해 환각을
+> 막습니다. 검색·재랭킹·음성인식·이상신호 분석은 로컬에서 수행하며, 답변 모델은
+> `LLM_BACKEND`로 교체할 수 있어 **온디바이스(로컬 Ollama) 실행도 지원**합니다.
+> 민감정보는 서버에서 암호화·접근통제로 안전하게 처리합니다.
 
 ---
 
@@ -43,13 +45,15 @@
     │
     └─▶ Layer 2: 이상신호 분석 (증상 반복 + 감정 점수 + 개인 baseline)
     │
-  로컬 LLM (Ollama · EXAONE 3.5 2.4B) — 검색 근거만으로 한국어 답변
+  LLM (클라우드 API: GPT-4o 등 · 또는 로컬 Ollama) — 검색 근거만으로 한국어 답변
     │
   응답 생성  +  (이상신호 시) 사회복지사 알림 요약
 ```
 
 **핵심 설계**
-- **개인정보 보호**: 전 구간 로컬. 대화가 기기/가정 네트워크를 벗어나지 않음.
+- **정확성(근거 기반)**: LLM이 아는 지식이 아니라 검색된 대전 공공문서 근거로만 답변.
+- **개인정보 보호**: 검색·이상신호 분석은 로컬, 민감정보는 서버 암호화·접근통제로 처리.
+  (`LLM_BACKEND=ollama`로 답변까지 완전 온디바이스 실행도 선택 가능.)
 - **안정성**: 모델 추론을 Streamlit과 분리된 별도 워커 프로세스에서 실행(bus error 방지).
 - **검색 정밀도**: 임베딩으로 후보를 넓게 뽑고 cross-encoder로 재랭킹.
 - **환각 억제**: 관련성 게이트 — 검색 점수가 낮으면 잘못된 근거로 답하지 않고 주민센터 안내.
@@ -68,7 +72,7 @@
 | `src/embeddings.py` | bge-m3 임베딩 (+ 오프라인 TF-IDF 대체) |
 | `src/stt.py` | **Step 2** Whisper 음성인식 |
 | `src/abnormal_signal.py` | **Step 3** 감정 분석 + 증상 반복 + baseline 이상징후 |
-| `src/llm.py` | 로컬 Ollama LLM 클라이언트 + 프롬프트(근거 기반·잡담·거절) |
+| `src/llm.py` | LLM 클라이언트(클라우드 API: OpenAI/GPT-4o·Gemini·Groq, 또는 로컬 Ollama) + 프롬프트(근거 기반·잡담·거절) |
 | `src/pipeline.py` | **Step 4** 전체 통합 (라우팅·게이트·알림) |
 | `src/agent.py` | **실험** 에이전트 (도구 호출 + 다중 의도 플래너, 로컬·안전) |
 | `src/worker.py`, `src/worker_server.py` | 모델 추론용 별도 워커 프로세스 |
@@ -89,9 +93,16 @@
 ```bash
 pip install -r requirements.txt
 
-# 로컬 LLM (Ollama) — 클라우드 API 아님, 로컬 프로세스입니다. https://ollama.com
-ollama pull exaone3.5:2.4b        # 기본 모델 (한국어 특화, LG AI)
-#  또는 qwen2.5:1.5b  등 — 모델은 자동 감지/대체됩니다.
+# 답변 LLM 백엔드 선택 (기본: 클라우드 API)
+#  · 클라우드 API (기본):
+export LLM_BACKEND=openai
+export OPENAI_API_KEY=...          # OpenAI(GPT-4o) 또는 Groq 키
+# Groq 등 OpenAI 호환 엔드포인트를 쓸 때:
+#   export OPENAI_BASE_URL=https://api.groq.com/openai/v1
+#   export OPENAI_MODEL=openai/gpt-oss-20b
+#  · 또는 온디바이스(로컬) 실행:
+#   export LLM_BACKEND=ollama && ollama pull exaone3.5:2.4b
+# 키가 없으면 자동으로 로컬 Ollama → 템플릿으로 폴백하여 항상 동작합니다.
 
 # 문서 색인 확인 (RAG 검색)
 python -m src.rag_pipeline
@@ -198,22 +209,23 @@ EVAL_LIMIT=30 python eval_agent.py                   # 빠른 부분 비교
 
 ## 휴대폰에서 사용 (모바일 웹 · PWA)
 
-LLM·음성은 집/센터의 허브(미니PC·태블릿)에서 로컬 실행하고, 휴대폰은 같은
-WiFi로 접속하는 "화면·마이크" 역할만 합니다.
+어르신 휴대폰은 앱(웹/PWA) 화면·마이크 역할을 하고, 서버(또는 집/센터의 허브)가
+RAG 검색과 LLM API 호출로 답변을 생성합니다. 같은 WiFi의 허브로도, 인터넷의
+서버로도 접속할 수 있습니다.
 
 ```bash
-# 허브에서 실행 (같은 WiFi의 휴대폰이 접속)
+# 서버/허브에서 실행 (휴대폰이 접속)
 python -m streamlit run app.py --server.address 0.0.0.0
 
-# 음성(마이크)까지 쓰려면 로컬 HTTPS 실행기 (모두 로컬, 클라우드·터널 없음)
+# 음성(마이크)까지 쓰려면 로컬 HTTPS 실행기
 ./run_phone.sh
 ```
 휴대폰 브라우저에서 접속 후 **홈 화면에 추가**하면 앱처럼 전체화면으로 열립니다.
 
 ## 모델 및 데이터
 
-- **LLM**: Ollama `exaone3.5:2.4b` (기본, 한국어 특화) — `qwen2.5` 등 자동 대체
-- **임베딩**: `BAAI/bge-m3` (다국어, 인증 불필요)
+- **LLM(답변)**: 클라우드 API `GPT-4o`(기본) · Gemini · Groq 전환 가능 — 또는 로컬 `exaone3.5:2.4b`(온디바이스)
+- **임베딩**: `BAAI/bge-m3` (다국어, 인증 불필요, 로컬)
 - **재랭킹**: `BAAI/bge-reranker-v2-m3` (cross-encoder)
 - **STT**: Whisper (`faster-whisper`)
 - **감정 분석**: 공개 한국어 sentiment 모델 (Hugging Face)

@@ -1,15 +1,15 @@
 """
 Central configuration for the elderly welfare voice AI system (대전노인복지 HUB).
 
-On-device by design: answer generation runs on a LOCAL LLM (Ollama · EXAONE
-3.5), combined with a Retrieval-Augmented Generation (RAG) index built from
-Daejeon public welfare data. The local model provides language ability; the
-RAG index grounds every answer in 대전 공공데이터 so the assistant does not
-hallucinate and can be corrected by updating the documents (no retraining).
-All processing — LLM, embedding, reranking, speech — stays on the device; no
-conversation leaves the machine. Cloud API backends (GPT-4o / Gemini) exist
-only as an optional convenience for environments without a local model, and
-must be turned on explicitly via LLM_BACKEND.
+Answer generation uses a cloud LLM API (GPT-4o by default), combined with a
+Retrieval-Augmented Generation (RAG) index built from Daejeon public welfare
+data. The LLM provides language ability; the RAG index grounds every answer in
+대전 공공데이터 so the assistant does not hallucinate and can be corrected by
+updating the documents (no retraining). The answer model is swappable via
+LLM_BACKEND (openai / gemini / ollama), and a local Ollama backend is kept as
+a fallback so the pipeline still runs without an API key. Sensitive data is
+handled on the server side (encryption / access control) rather than sent to a
+third-party store beyond the model call.
 """
 import os
 from pathlib import Path
@@ -52,14 +52,12 @@ RAG_USE_RERANK = os.environ.get("RAG_RERANK", "1") != "0"   # set RAG_RERANK=0 t
 RAG_MIN_RELEVANCE = float(os.environ.get("RAG_MIN_RELEVANCE", "0.25"))
 
 # --- LLM backend ---------------------------------------------------------
-# Answer generation backend. Default is "ollama" (ON-DEVICE / local, our core
-# design): the welfare assistant runs entirely on the machine and no
-# conversation is sent to any cloud service. "gemini" (Google Gemini) and
-# "openai" (GPT-4o) are OPTIONAL cloud backends for environments that cannot
-# run a local model; they must be enabled explicitly (LLM_BACKEND=gemini ...).
-# If a chosen cloud backend has no key, the pipeline falls back to local Ollama,
-# then a transparent template, so the system always runs.
-LLM_BACKEND = os.environ.get("LLM_BACKEND", "ollama").lower()
+# Answer generation backend. Default is "openai" (a cloud LLM API; GPT-4o, or
+# any OpenAI-compatible endpoint such as Groq via OPENAI_BASE_URL). "gemini"
+# (Google Gemini) is another cloud option, and "ollama" runs a local model
+# on-device. If the chosen cloud backend has no API key, the pipeline falls
+# back to local Ollama, then a transparent template, so the system always runs.
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "openai").lower()
 
 # OpenAI (GPT-4o). Set your key at runtime:  OPENAI_API_KEY=sk-... python app.py
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
