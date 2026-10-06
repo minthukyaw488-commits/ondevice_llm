@@ -15,10 +15,15 @@ JSON으로 돌려주고, 같은 페이지에 표시합니다.
 
 브라우저:  http://localhost:8000   (같은 WiFi의 다른 기기는 http://서버IP:8000)
 """
+import base64
+import json
+
+import requests
+
 import ask  # rag_lecture/ask.py — search/ask + 벡터 로드 (import 시 1회)
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="대전 독거노인 복지 RAG")
@@ -26,6 +31,45 @@ app = FastAPI(title="대전 독거노인 복지 RAG")
 
 class Question(BaseModel):
     question: str
+
+
+@app.post("/ask_stream")
+def ask_stream(q: Question):
+    """실시간 스트리밍: 검색 후 LLM이 생성하는 토큰을 그대로 흘려보낸다.
+    근거(출처)는 응답 헤더(X-Sources, base64 JSON)로 먼저 전달한다."""
+    text = (q.question or "").strip()
+    hits = ask.search(text) if text else []
+    srcs = [{"source": s, "score": round(sc, 3)} for _, s, sc in hits]
+    hdr = base64.b64encode(
+        json.dumps(srcs, ensure_ascii=False).encode("utf-8")).decode("ascii")
+    prompt = ask.build_prompt(text, hits)
+
+    def gen():
+        if not text:
+            yield "질문을 입력해 주세요."
+            return
+        try:
+            with requests.post(
+                ask.OLLAMA + "/api/generate",
+                json={"model": ask.CHAT_MODEL, "prompt": prompt, "stream": True},
+                stream=True, timeout=120,
+            ) as r:
+                r.raise_for_status()
+                for line in r.iter_lines():
+                    if not line:
+                        continue
+                    d = json.loads(line)
+                    chunk = d.get("response", "")
+                    if chunk:
+                        yield chunk
+                    if d.get("done"):
+                        break
+        except Exception as e:                   # Ollama 미실행 등
+            yield f"(오류: {e}) Ollama 실행 여부를 확인하세요."
+
+    return StreamingResponse(
+        gen(), media_type="text/plain; charset=utf-8",
+        headers={"X-Sources": hdr, "Access-Control-Expose-Headers": "X-Sources"})
 
 
 @app.post("/ask")
@@ -87,13 +131,24 @@ function add(who,text,srcs){
   r.append(a,w);chat.appendChild(r);chat.scrollTop=chat.scrollHeight;return b;
 }
 add('bot','안녕하세요, 어르신. 궁금한 복지 서비스를 편하게 물어보세요. 😊');
+function decodeSources(h){
+  try{const b=atob(h||'');const u=Uint8Array.from(b,c=>c.charCodeAt(0));
+      return JSON.parse(new TextDecoder().decode(u));}catch(e){return [];}
+}
 async function ask(){
   const t=q.value.trim();if(!t)return;q.value='';send.disabled=true;
-  add('me',t);const b=add('bot','…');
+  add('me',t);const b=add('bot','');b.textContent='…';
   try{
-    const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:t})});
-    const d=await r.json();b.textContent=d.answer;
-    if(d.sources&&d.sources.length){const s=document.createElement('div');s.className='src';s.textContent='📄 근거: '+d.sources.map(x=>x.source).join(', ');b.parentNode.appendChild(s);}
+    const r=await fetch('/ask_stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:t})});
+    const srcs=decodeSources(r.headers.get('X-Sources'));
+    // 실시간: 서버가 흘려보내는 토큰을 받는 즉시 화면에 덧붙인다.
+    const reader=r.body.getReader();const dec=new TextDecoder();let out='';
+    while(true){
+      const {value,done}=await reader.read();if(done)break;
+      out+=dec.decode(value,{stream:true});b.textContent=out;
+      chat.scrollTop=chat.scrollHeight;
+    }
+    if(srcs&&srcs.length){const s=document.createElement('div');s.className='src';s.textContent='📄 근거: '+srcs.map(x=>x.source).join(', ');b.parentNode.appendChild(s);}
   }catch(e){b.textContent='오류가 발생했습니다. 다시 시도해 주세요.';}
   send.disabled=false;q.focus();
 }

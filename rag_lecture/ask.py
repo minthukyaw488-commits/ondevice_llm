@@ -99,14 +99,19 @@ def search(q: str, k: int = TOPK):
     return [(CHUNKS[i], SOURCES[i], float(sims[i])) for i in idx]
 
 
+def build_prompt(q: str, hits) -> str:
+    """검색된 근거로 "자료만 근거로" 프롬프트를 만든다 (강의 slide 60).
+    ask()와 서버 스트리밍이 같은 프롬프트를 쓰도록 분리했다."""
+    ctx = "\n\n".join(h[0] for h in hits)
+    return ("아래 자료만 근거로 한국어로 짧고 공손하게 답하세요.\n"
+            "자료에 없으면 '자료에 없습니다. 가까운 주민센터에 문의하세요'라고만 "
+            "답하세요.\n\n"
+            f"[자료]\n{ctx}\n\n[질문] {q}")
+
+
 def ask(q: str):
     hits = search(q)
-    ctx = "\n\n".join(h[0] for h in hits)
-    # "자료만 근거로" — 이 한 줄이 환각을 막는 핵심 (강의 slide 60).
-    prompt = ("아래 자료만 근거로 한국어로 짧고 공손하게 답하세요.\n"
-              "자료에 없으면 '자료에 없습니다. 가까운 주민센터에 문의하세요'라고만 "
-              "답하세요.\n\n"
-              f"[자료]\n{ctx}\n\n[질문] {q}")
+    prompt = build_prompt(q, hits)
     r = requests.post(OLLAMA + "/api/generate",
                       json={"model": CHAT_MODEL, "prompt": prompt, "stream": False})
     r.raise_for_status()
