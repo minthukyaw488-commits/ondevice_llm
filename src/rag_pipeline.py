@@ -11,6 +11,7 @@ If ChromaDB is unavailable, a small in-memory cosine store is used so the
 retrieval logic can still be demonstrated offline.
 """
 from __future__ import annotations
+import os
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -399,12 +400,10 @@ class RagPipeline:
             import chromadb
             config.CHROMA_DIR.mkdir(parents=True, exist_ok=True)
             client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
-            # Reset so re-indexing is idempotent for the demo.
-            try:
-                client.delete_collection(config.CHROMA_COLLECTION)
-            except Exception:
-                pass
-            return client.create_collection(
+            # Reuse the persisted collection across runs (don't delete it), so
+            # the corpus isn't re-embedded on every startup. index() rebuilds it
+            # only when it's empty or RAG_REINDEX=1.
+            return client.get_or_create_collection(
                 config.CHROMA_COLLECTION, metadata={"hnsw:space": "cosine"})
         except Exception as exc:
             print(f"[rag] ChromaDB unavailable ({exc.__class__.__name__}); "
@@ -418,7 +417,25 @@ class RagPipeline:
         A per-file breakdown of the run is left on ``self.index_stats`` so a
         caller (e.g. the CLI check report) can show which documents were
         indexed, how many chunks each kept, and what was skipped.
+
+        The ChromaDB store is persisted, so if it's already populated this
+        reuses it (no re-embedding) for a fast startup. Set RAG_REINDEX=1 to
+        force a rebuild after the documents change.
         """
+        force = os.environ.get("RAG_REINDEX", "0") not in ("0", "", "false", "False")
+        if self.backend == "chroma" and not force:
+            try:
+                existing = self._collection.count()
+            except Exception:
+                existing = 0
+            if existing > 0:
+                self.index_stats = {"kept": {}, "dropped": {}, "skipped_files": [],
+                                    "total_chunks": existing, "total_dropped": 0,
+                                    "reused": True}
+                print(f"[rag] 기존 벡터 인덱스 재사용: {existing} 조각 "
+                      f"(다시 색인하려면 RAG_REINDEX=1)")
+                return existing
+
         documents = load_documents(docs_dir)
         loaded_sources = {d["source"] for d in documents}
         chunks, metadatas, ids = [], [], []
@@ -459,8 +476,14 @@ class RagPipeline:
         # fallback; a no-op for bge-m3).
         self.embedder.fit(chunks)
         embeddings = [list(map(float, v)) for v in self.embedder.encode(chunks)]
-        self._collection.add(ids=ids, embeddings=embeddings,
-                             documents=chunks, metadatas=metadatas)
+        # upsert (not add) so a forced rebuild over the persisted collection
+        # replaces existing ids instead of erroring on duplicates.
+        if self.backend == "chroma":
+            self._collection.upsert(ids=ids, embeddings=embeddings,
+                                    documents=chunks, metadatas=metadatas)
+        else:
+            self._collection.add(ids=ids, embeddings=embeddings,
+                                 documents=chunks, metadatas=metadatas)
         return len(chunks)
 
     def _vector_search(self, question: str, n: int) -> List[Retrieved]:
