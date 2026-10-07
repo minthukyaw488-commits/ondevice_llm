@@ -472,18 +472,26 @@ class RagPipeline:
             print(f"[rag] dropped {dropped} low-quality chunk(s) (noise/tables).")
         if not chunks:
             return 0
+        # Rebuild from a CLEAN collection so documents removed from the corpus
+        # (e.g. a deleted file) disappear instead of lingering as stale chunks.
+        if self.backend == "chroma":
+            try:
+                import chromadb
+                client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
+                try:
+                    client.delete_collection(config.CHROMA_COLLECTION)
+                except Exception:
+                    pass
+                self._collection = client.get_or_create_collection(
+                    config.CHROMA_COLLECTION, metadata={"hnsw:space": "cosine"})
+            except Exception:
+                pass
         # Fit the embedder on the full corpus first (matters for the TF-IDF
         # fallback; a no-op for bge-m3).
         self.embedder.fit(chunks)
         embeddings = [list(map(float, v)) for v in self.embedder.encode(chunks)]
-        # upsert (not add) so a forced rebuild over the persisted collection
-        # replaces existing ids instead of erroring on duplicates.
-        if self.backend == "chroma":
-            self._collection.upsert(ids=ids, embeddings=embeddings,
-                                    documents=chunks, metadatas=metadatas)
-        else:
-            self._collection.add(ids=ids, embeddings=embeddings,
-                                 documents=chunks, metadatas=metadatas)
+        self._collection.add(ids=ids, embeddings=embeddings,
+                             documents=chunks, metadatas=metadatas)
         return len(chunks)
 
     def _vector_search(self, question: str, n: int) -> List[Retrieved]:
