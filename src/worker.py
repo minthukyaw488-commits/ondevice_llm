@@ -80,6 +80,10 @@ class AssistantClient:
     def ask(self, text: str) -> dict:
         return self._rpc({"cmd": "ask", "text": text})
 
+    def ask_norag(self, text: str) -> dict:
+        """Answer with the LLM alone (no retrieval) — for the RAG on/off demo."""
+        return self._rpc({"cmd": "ask_norag", "text": text})
+
     def ask_audio(self, path: str) -> dict:
         return self._rpc({"cmd": "ask_audio", "path": path})
 

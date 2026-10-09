@@ -379,7 +379,11 @@ def _store(r: dict):
 
 
 def ask_text(client, q: str):
-    r = client.ask(q)
+    # Demo toggle: RAG on (문서 근거) vs off (LLM만).
+    if st.session_state.get("use_rag", True):
+        r = client.ask(q)
+    else:
+        r = client.ask_norag(q)
     if "error" in r:
         st.error(r["error"]); return
     _store(r)
@@ -828,6 +832,14 @@ def main():
             st.session_state["mode"] = "text"; st.rerun()
         if st.button("음성 대화 (핸즈프리)", use_container_width=True):
             st.session_state["mode"] = "voice"; st.rerun()
+        st.divider()
+        st.caption("데모 설정")
+        st.session_state["use_rag"] = st.toggle(
+            "RAG 사용 (문서 근거)", value=st.session_state.get("use_rag", True),
+            help="끄면 검색 없이 LLM만으로 답합니다 — RAG 효과 비교용")
+        st.caption("🟢 RAG 사용 — 대전 공문서 근거"
+                   if st.session_state.get("use_rag", True)
+                   else "⚪ RAG 미사용 — LLM만 (지어낼 수 있음)")
         if st.button("대화 초기화", use_container_width=True):
             st.session_state["state"] = client.reset()
             st.session_state["chat"] = []

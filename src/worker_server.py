@@ -24,6 +24,11 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
+# No-RAG mode (demo): answer with the LLM alone, no retrieved documents, so the
+# RAG effect can be compared in the UI.
+NO_RAG_SYSTEM = ("당신은 복지 상담 도우미입니다. 질문에 한국어로 2~3문장으로 "
+                 "답하세요.")
+
 
 def _turn_dict(res, bot) -> dict:
     return {
@@ -93,6 +98,13 @@ def main() -> None:
         try:
             if cmd == "ask":
                 send(_turn_dict(bot.ask_text(req["text"]), bot))
+            elif cmd == "ask_norag":
+                q = req["text"]
+                sig = bot.detector.add_utterance(q)
+                ans = (bot.llm.generate(q, system=NO_RAG_SYSTEM).strip()
+                       if bot.llm.available else "(LLM 미연결)")
+                send({"question": q, "answer": ans, "sources": [],
+                      "alert": bot._maybe_alert(sig), **_state_dict(bot)})
             elif cmd == "ask_audio":
                 send(_turn_dict(bot.ask_audio(req["path"]), bot))
             elif cmd == "transcribe":
