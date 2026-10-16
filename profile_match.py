@@ -6,16 +6,49 @@ RAG(질문 맞춤형)의 다음 단계인 '사람 맞춤형'을 가장 단순하
 
   python profile_match.py            # 미리 준비한 예시 프로필 3명 출력
   python profile_match.py --ask      # 직접 입력(대화형)
+  python profile_match.py --rag      # 추천 복지마다 실제 문서 근거(RAG)까지 표시
+
+--rag 는 rag_lecture 인덱스(vectors.npy)와 Ollama 임베딩이 있을 때만 동작하며,
+없으면 자동으로 규칙 기반 결과만 보여준다(어디서나 데모 가능).
 
 ※ 자격 기준은 대략치이며, 정확한 금액·등급은 공공문서(RAG)·주민센터로 확인.
 """
 from __future__ import annotations
+import os
 import sys
 
-from src.welfare_rules import Profile, recommend, DAEJEON_DISTRICTS
+from src.welfare_rules import Profile, Welfare, recommend, DAEJEON_DISTRICTS
+
+USE_RAG = "--rag" in sys.argv
+# 근거로 보여줄 조각 수
+EVIDENCE_K = int(os.environ.get("RAG_EVIDENCE_K", "2"))
 
 
-def _print_result(p: Profile):
+def _load_rag():
+    """rag_lecture/ask.py 를 안전하게 로드. 인덱스가 없으면 None(근거 생략)."""
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    ask_path = os.path.join(here, "rag_lecture", "ask.py")
+    try:
+        spec = importlib.util.spec_from_file_location("rag_lecture_ask", ask_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)   # vectors.npy 없으면 여기서 예외
+        return mod
+    except Exception as e:                # noqa: BLE001 — 데모는 조용히 규칙 기반으로
+        print(f"  (RAG 근거 생략 — 인덱스/임베딩 불가: {type(e).__name__})")
+        return None
+
+
+def _evidence_for(rag, w: Welfare):
+    """복지 하나에 대한 실제 문서 근거 조각 목록. 실패 시 빈 리스트."""
+    query = f"{w.name} 지원 대상 신청 자격"
+    try:
+        return rag.search(query, k=EVIDENCE_K)   # [(chunk, source, sim), ...]
+    except Exception:                             # noqa: BLE001
+        return []
+
+
+def _print_result(p: Profile, rag=None):
     eligible, maybe, not_elig = recommend(p)
 
     print("\n" + "=" * 60)
@@ -35,6 +68,15 @@ def _print_result(p: Profile):
             for why in r.reasons:
                 print(f"         - {why}")
             print(f"         ※ {r.welfare.verify_note}")
+            if rag is not None:
+                hits = _evidence_for(rag, r.welfare)
+                if hits:
+                    print("         📄 문서 근거(RAG):")
+                    for chunk, src, sim in hits:
+                        snippet = " ".join(chunk.split())[:90]
+                        print(f"            [{sim:.3f}] ({src or '출처미상'}) {snippet}…")
+                else:
+                    print("         📄 문서 근거: 관련 조각을 찾지 못함")
     else:
         print("     (해당 없음 — 아래 '확인 필요' 참고)")
 
@@ -102,13 +144,17 @@ def ask_profile() -> Profile:
 
 
 def main():
+    rag = _load_rag() if USE_RAG else None
+    if rag is not None:
+        print("  (RAG 근거 표시 ON — rag_lecture 인덱스 사용)")
+
     if "--ask" in sys.argv:
-        _print_result(ask_profile())
+        _print_result(ask_profile(), rag=rag)
         return
     print("사람 맞춤형 복지 추천 데모 — 예시 프로필 3명\n(직접 입력: python profile_match.py --ask)")
     for title, p in SAMPLES:
         print(f"\n\n### {title}")
-        _print_result(p)
+        _print_result(p, rag=rag)
 
 
 if __name__ == "__main__":
