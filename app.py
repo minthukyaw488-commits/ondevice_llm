@@ -379,13 +379,20 @@ def _store(r: dict):
 
 
 def ask_text(client, q: str):
+    # 맞춤형: 내 정보가 있으면 질문에 짧은 프로필 메모를 덧붙여, 그 사람 상황에
+    # 맞춘 답변을 유도한다(정보가 없으면 질문 그대로 — 기존 동작과 동일).
+    p = st.session_state.get("profile", {})
+    q_send = q
+    if _profile_has_info(p):
+        q_send = f"{q}\n\n(상담 대상자: {_profile_summary(p)}. 이 분 상황에 맞춰 안내해 주세요.)"
     # Demo toggle: RAG on (문서 근거) vs off (LLM만).
     if st.session_state.get("use_rag", True):
-        r = client.ask(q)
+        r = client.ask(q_send)
     else:
-        r = client.ask_norag(q)
+        r = client.ask_norag(q_send)
     if "error" in r:
         st.error(r["error"]); return
+    r["question"] = q   # 화면에는 원래 질문만 보이게
     _store(r)
 
 
@@ -398,6 +405,82 @@ def ask_audio(client, wav: bytes):
     if "error" in r:
         st.error(r["error"]); return
     _store(r)
+
+
+# --------------------------------------------------------------------------
+# 사람 맞춤형 — 내 정보(프로필) + 받을 수 있는 복지 추천
+#   일반 상담(질문 맞춤형)에 더해, 어르신 정보를 넣으면 '받을 수 있는 복지'를
+#   먼저 알려주고(규칙 매칭), 이어지는 질문도 그 사람 상황을 참고해 답하도록
+#   질문에 짧은 프로필 메모를 덧붙인다. 모두 선택 사항이라 비워두면 기존과 동일.
+# --------------------------------------------------------------------------
+def _profile_summary(p: dict) -> str:
+    def yn(v):
+        return "예" if v is True else ("아니오" if v is False else "모름")
+    out = []
+    if p.get("age") is not None:
+        out.append(f"나이 {p['age']}세")
+    if p.get("district"):
+        out.append(f"대전 {p['district']} 거주")
+    out += [f"저소득 {yn(p.get('income_low'))}", f"독거 {yn(p.get('living_alone'))}",
+            f"거동불편 {yn(p.get('mobility_issue'))}", f"만성질환 {yn(p.get('chronic_illness'))}"]
+    return ", ".join(out)
+
+
+def _profile_has_info(p: dict) -> bool:
+    return bool(p) and any(p.get(k) is not None for k in
+                           ("age", "income_low", "district", "living_alone",
+                            "mobility_issue", "chronic_illness"))
+
+
+def profile_sidebar():
+    """사이드바에서 어르신 정보를 입력받아 session_state['profile']에 저장."""
+    p = st.session_state.setdefault("profile", {})
+    with st.sidebar:
+        with st.expander("🧓 내 정보 (맞춤 추천)", expanded=False):
+            tri = {"모름": None, "예": True, "아니오": False}
+            rev = {None: "모름", True: "예", False: "아니오"}
+            age_s = st.text_input("나이(만)", value="" if p.get("age") is None else str(p["age"]))
+            districts = ["선택 안 함", "동구", "중구", "서구", "유성구", "대덕구"]
+            di = districts.index(p["district"]) if p.get("district") in districts else 0
+            district = st.selectbox("거주 구", districts, index=di)
+            income = st.selectbox("저소득(기초수급 등)", ["모름", "예", "아니오"],
+                                  index=["모름", "예", "아니오"].index(rev[p.get("income_low")]))
+            alone = st.selectbox("독거(혼자 거주)", ["모름", "예", "아니오"],
+                                 index=["모름", "예", "아니오"].index(rev[p.get("living_alone")]))
+            mob = st.selectbox("거동 불편", ["모름", "예", "아니오"],
+                               index=["모름", "예", "아니오"].index(rev[p.get("mobility_issue")]))
+            ill = st.selectbox("만성질환·기억력 저하", ["모름", "예", "아니오"],
+                               index=["모름", "예", "아니오"].index(rev[p.get("chronic_illness")]))
+            if st.button("내 정보 저장", use_container_width=True):
+                try:
+                    age = int(age_s) if age_s.strip() else None
+                except ValueError:
+                    age = None
+                st.session_state["profile"] = {
+                    "age": age,
+                    "district": None if district == "선택 안 함" else district,
+                    "income_low": tri[income], "living_alone": tri[alone],
+                    "mobility_issue": tri[mob], "chronic_illness": tri[ill]}
+                st.rerun()
+
+
+def eligible_panel():
+    """session_state['profile'] 기준으로 받을 수 있는 복지를 보여준다."""
+    p = st.session_state.get("profile", {})
+    if not _profile_has_info(p):
+        return
+    try:
+        from src.welfare_rules import Profile, recommend
+        eligible, maybe, _ = recommend(Profile(**p))
+    except Exception:
+        return
+    names = ", ".join(r.welfare.name for r in eligible) or "추가 정보 필요"
+    st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
+    st.success(f"**받으실 수 있는 복지:** {names}")
+    st.caption(f"입력하신 정보: {_profile_summary(p)}  ·  정확한 기준은 주민센터 확인")
+    if maybe:
+        st.caption("확인하면 가능: " + ", ".join(r.welfare.name for r in maybe))
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # --------------------------------------------------------------------------
@@ -847,6 +930,8 @@ def main():
             st.session_state.pop("last_mic", None)
             st.rerun()
 
+    profile_sidebar()   # 사이드바에 '내 정보(맞춤 추천)' 입력 추가
+
     inject_css()
     inject_pwa()
 
@@ -864,6 +949,7 @@ def main():
         hero_c = st.container()
         lower_c = st.container()
         with lower_c:
+            eligible_panel()   # 내 정보가 있으면 '받을 수 있는 복지' 패널 표시
             category_cards(client)
             popular_and_notices()
             footer()
