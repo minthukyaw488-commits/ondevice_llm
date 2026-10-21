@@ -10,6 +10,8 @@ RAG(질문 맞춤형)의 다음 단계인 '사람 맞춤형'을 가장 단순하
 
 --rag 는 rag_lecture 인덱스(vectors.npy)와 Ollama 임베딩이 있을 때만 동작하며,
 없으면 자동으로 규칙 기반 결과만 보여준다(어디서나 데모 가능).
+근거는 유사도 RAG_EVIDENCE_MIN_SIM(기본 0.62) 이상만 표시하고, 그보다 낮으면
+'관련도 높은 근거 없음(데이터 보강 과제)'으로 정직하게 보고한다.
 
 ※ 자격 기준은 대략치이며, 정확한 금액·등급은 공공문서(RAG)·주민센터로 확인.
 """
@@ -22,6 +24,9 @@ from src.welfare_rules import Profile, Welfare, recommend, DAEJEON_DISTRICTS
 USE_RAG = "--rag" in sys.argv
 # 근거로 보여줄 조각 수
 EVIDENCE_K = int(os.environ.get("RAG_EVIDENCE_K", "2"))
+# 근거로 인정할 최소 유사도. 이보다 낮으면 '관련도 낮음'으로 보고 근거에서 제외한다.
+# (시설 중심 데이터라 일부 제도 질문은 관련 조각이 약함 → 데이터 보강 과제)
+EVIDENCE_MIN_SIM = float(os.environ.get("RAG_EVIDENCE_MIN_SIM", "0.62"))
 
 
 def _load_rag():
@@ -80,13 +85,15 @@ def _print_result(p: Profile, rag=None):
             print(f"         ※ {r.welfare.verify_note}")
             if rag is not None:
                 hits = _evidence_for(rag, r.welfare)
-                if hits:
+                good = [h for h in hits if h[2] >= EVIDENCE_MIN_SIM]
+                if good:
                     print("         📄 문서 근거(RAG):")
-                    for chunk, src, sim in hits:
+                    for chunk, src, sim in good:
                         snippet = " ".join(chunk.split())[:90]
                         print(f"            [{sim:.3f}] ({src or '출처미상'}) {snippet}…")
                 else:
-                    print("         📄 문서 근거: 관련 조각을 찾지 못함")
+                    print("         📄 문서 근거: 관련도 높은 근거 없음 "
+                          "(데이터 보강 과제)")
     else:
         print("     (해당 없음 — 아래 '확인 필요' 참고)")
 
