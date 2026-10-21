@@ -10,3 +10,6 @@ data/audio/
 
 # HTTPS certs for phone/LAN serving (machine-specific, contains private key)
 certs/
+
+# 개인 프로필(어르신 정보) — 민감정보라 커밋하지 않음
+data/profiles.json
