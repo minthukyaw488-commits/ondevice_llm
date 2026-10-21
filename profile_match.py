@@ -39,12 +39,22 @@ def _load_rag():
         return None
 
 
+# 검색 실패 원인을 한 번만 보여주기 위한 플래그
+_RAG_ERR_SHOWN = False
+
+
 def _evidence_for(rag, w: Welfare):
-    """복지 하나에 대한 실제 문서 근거 조각 목록. 실패 시 빈 리스트."""
+    """복지 하나에 대한 실제 문서 근거 조각 목록. 실패 시 빈 리스트.
+    첫 실패의 원인(예: Ollama 미실행, 임베딩 모델 없음)은 한 번 출력한다."""
+    global _RAG_ERR_SHOWN
     query = f"{w.name} 지원 대상 신청 자격"
     try:
         return rag.search(query, k=EVIDENCE_K)   # [(chunk, source, sim), ...]
-    except Exception:                             # noqa: BLE001
+    except Exception as e:                        # noqa: BLE001
+        if not _RAG_ERR_SHOWN:
+            print(f"  ⚠ RAG 검색 실패: {type(e).__name__}: {e}")
+            print("    (Ollama 실행 여부·임베딩 모델(bge-m3)·vectors.npy 확인)")
+            _RAG_ERR_SHOWN = True
         return []
 
 
