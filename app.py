@@ -432,36 +432,87 @@ def _profile_has_info(p: dict) -> bool:
                             "mobility_issue", "chronic_illness"))
 
 
-def profile_sidebar():
-    """사이드바에서 어르신 정보를 입력받아 session_state['profile']에 저장."""
-    p = st.session_state.setdefault("profile", {})
-    with st.sidebar:
-        with st.expander("🧓 내 정보 (맞춤 추천)", expanded=False):
-            tri = {"모름": None, "예": True, "아니오": False}
-            rev = {None: "모름", True: "예", False: "아니오"}
-            age_s = st.text_input("나이(만)", value="" if p.get("age") is None else str(p["age"]))
-            districts = ["선택 안 함", "동구", "중구", "서구", "유성구", "대덕구"]
-            di = districts.index(p["district"]) if p.get("district") in districts else 0
-            district = st.selectbox("거주 구", districts, index=di)
-            income = st.selectbox("저소득(기초수급 등)", ["모름", "예", "아니오"],
-                                  index=["모름", "예", "아니오"].index(rev[p.get("income_low")]))
-            alone = st.selectbox("독거(혼자 거주)", ["모름", "예", "아니오"],
-                                 index=["모름", "예", "아니오"].index(rev[p.get("living_alone")]))
-            mob = st.selectbox("거동 불편", ["모름", "예", "아니오"],
-                               index=["모름", "예", "아니오"].index(rev[p.get("mobility_issue")]))
-            ill = st.selectbox("만성질환·기억력 저하", ["모름", "예", "아니오"],
-                               index=["모름", "예", "아니오"].index(rev[p.get("chronic_illness")]))
-            if st.button("내 정보 저장", use_container_width=True):
-                try:
-                    age = int(age_s) if age_s.strip() else None
-                except ValueError:
-                    age = None
-                st.session_state["profile"] = {
-                    "age": age,
-                    "district": None if district == "선택 안 함" else district,
-                    "income_low": tri[income], "living_alone": tri[alone],
-                    "mobility_issue": tri[mob], "chronic_illness": tri[ill]}
-                st.rerun()
+def login_screen():
+    """1단계 — 로그인(성함 기반, 프로토타입). 성공하면 auth_user 설정."""
+    inject_css()
+    st.markdown('<div class="gov-wrap sec" style="max-width:520px;margin:8vh auto">',
+                unsafe_allow_html=True)
+    st.markdown("## 🏠 대전노인복지 HUB")
+    st.markdown("#### 로그인")
+    st.caption("성함을 입력하시면 시작합니다. (프로토타입 — 실제 서비스에서는 본인 인증·동의가 필요합니다)")
+    name = st.text_input("성함", placeholder="예: 홍길동")
+    if st.button("시작하기", type="primary", use_container_width=True):
+        if name.strip():
+            st.session_state["auth_user"] = name.strip()
+            # 저장된 프로필이 있으면 불러오기
+            try:
+                import json
+                import os
+                store = json.load(open(os.path.join("data", "profiles.json"), encoding="utf-8"))
+                if name.strip() in store:
+                    st.session_state["profile"] = store[name.strip()]
+                    st.session_state["profile_done"] = True
+            except Exception:
+                pass
+            st.rerun()
+        else:
+            st.warning("성함을 입력해 주세요.")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def profile_screen():
+    """2단계 — 내 정보 입력. 저장하면 profile_done 설정 후 포털로."""
+    inject_css()
+    p = st.session_state.get("profile", {})
+    user = st.session_state.get("auth_user", "")
+    st.markdown('<div class="gov-wrap sec" style="max-width:640px;margin:5vh auto">',
+                unsafe_allow_html=True)
+    st.markdown(f"## {user} 님, 반갑습니다")
+    st.markdown("#### 내 정보 입력")
+    st.caption("받으실 수 있는 복지를 정확히 찾기 위해 사용됩니다. 모르면 비워두셔도 됩니다.")
+    tri = {"모름": None, "예": True, "아니오": False}
+    rev = {None: "모름", True: "예", False: "아니오"}
+    c1, c2 = st.columns(2)
+    age_s = c1.text_input("나이(만)", value="" if p.get("age") is None else str(p["age"]))
+    districts = ["선택 안 함", "동구", "중구", "서구", "유성구", "대덕구"]
+    di = districts.index(p["district"]) if p.get("district") in districts else 0
+    district = c2.selectbox("거주 구", districts, index=di)
+    income = c1.selectbox("저소득(기초수급 등)", ["모름", "예", "아니오"],
+                          index=["모름", "예", "아니오"].index(rev[p.get("income_low")]))
+    alone = c2.selectbox("독거(혼자 거주)", ["모름", "예", "아니오"],
+                         index=["모름", "예", "아니오"].index(rev[p.get("living_alone")]))
+    mob = c1.selectbox("거동 불편", ["모름", "예", "아니오"],
+                       index=["모름", "예", "아니오"].index(rev[p.get("mobility_issue")]))
+    ill = c2.selectbox("만성질환·기억력 저하", ["모름", "예", "아니오"],
+                       index=["모름", "예", "아니오"].index(rev[p.get("chronic_illness")]))
+    if st.button("저장하고 시작하기", type="primary", use_container_width=True):
+        try:
+            age = int(age_s) if age_s.strip() else None
+        except ValueError:
+            age = None
+        prof = {"age": age, "district": None if district == "선택 안 함" else district,
+                "income_low": tri[income], "living_alone": tri[alone],
+                "mobility_issue": tri[mob], "chronic_illness": tri[ill]}
+        st.session_state["profile"] = prof
+        st.session_state["profile_done"] = True
+        # 로컬 저장(민감정보 — git 제외)
+        try:
+            import json
+            import os
+            os.makedirs("data", exist_ok=True)
+            path = os.path.join("data", "profiles.json")
+            store = {}
+            try:
+                store = json.load(open(path, encoding="utf-8"))
+            except Exception:
+                store = {}
+            store[user] = prof
+            json.dump(store, open(path, "w", encoding="utf-8"),
+                      ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def eligible_panel():
@@ -641,14 +692,7 @@ def hero(client):
     st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
     st.markdown('<div class="ai-head">음성·문자 복지 상담 (AI 도우미)</div>',
                 unsafe_allow_html=True)
-    # Demo control: RAG on/off (visible on the main page).
-    rc1, rc2 = st.columns([1.1, 2.4], vertical_alignment="center")
-    st.session_state["use_rag"] = rc1.toggle(
-        "RAG 사용 (문서 근거)", value=st.session_state.get("use_rag", True),
-        help="끄면 검색 없이 LLM만으로 답합니다 — RAG 효과 비교용")
-    rc2.caption("🟢 RAG 사용 — 대전 공문서 근거로 답변"
-                if st.session_state.get("use_rag", True)
-                else "⚪ RAG 미사용 — LLM만 (대전 정보를 지어낼 수 있음)")
+    st.session_state["use_rag"] = True   # 항상 RAG 사용(문서 근거)
     orb_slot = st.container()          # voice orb sits here (top), filled last
     # text input (renders before the blocking voice loop, so it always shows)
     with st.form("ai_text", clear_on_submit=True):
@@ -894,6 +938,14 @@ def main():
     st.session_state.setdefault("font_scale", 1.0)
     st.session_state.setdefault("voice_mode", False)
 
+    # 접속 흐름: 로그인 → 내 정보 입력 → (이후) 포털 화면.
+    if not st.session_state.get("auth_user"):
+        login_screen()
+        return
+    if not st.session_state.get("profile_done"):
+        profile_screen()
+        return
+
     # A category card links to ?ask=<question>; handle it, then clear the param.
     if "ask" in st.query_params:
         q = st.query_params["ask"]
@@ -930,7 +982,15 @@ def main():
             st.session_state.pop("last_mic", None)
             st.rerun()
 
-    profile_sidebar()   # 사이드바에 '내 정보(맞춤 추천)' 입력 추가
+    with st.sidebar:
+        st.divider()
+        st.caption(f"👤 {st.session_state.get('auth_user','')} 님")
+        if st.button("내 정보 수정", use_container_width=True):
+            st.session_state["profile_done"] = False; st.rerun()
+        if st.button("로그아웃", use_container_width=True):
+            for k in ("auth_user", "profile", "profile_done"):
+                st.session_state.pop(k, None)
+            st.rerun()
 
     inject_css()
     inject_pwa()
