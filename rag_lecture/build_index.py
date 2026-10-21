@@ -57,10 +57,24 @@ def read_file(path: str) -> str:
                 continue
         return open(path, encoding="utf-8", errors="ignore").read()
     if ext == "pdf":
+        # 1순위 pdfplumber, 없으면 2순위 pymupdf(fitz)로 글자 추출.
+        # 둘 다 없을 때만 건너뛴다(둘 중 하나만 설치돼 있어도 PDF가 인덱싱된다).
         try:
             import pdfplumber
             with pdfplumber.open(path) as pdf:
                 return "\n".join(p.extract_text() or "" for p in pdf.pages)
+        except ImportError:
+            pass
+        except Exception as e:
+            print(f"  (pdf 건너뜀: {os.path.basename(path)} — {e})")
+            return ""
+        try:
+            import pymupdf  # PyMuPDF
+            with pymupdf.open(path) as doc:
+                return "\n".join(page.get_text() for page in doc)
+        except ImportError:
+            print(f"  (pdf 건너뜀: {os.path.basename(path)} — "
+                  "pdfplumber/pymupdf 둘 다 없음. pip install pdfplumber)")
         except Exception as e:
             print(f"  (pdf 건너뜀: {os.path.basename(path)} — {e})")
     return ""
