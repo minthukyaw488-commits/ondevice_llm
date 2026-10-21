@@ -69,7 +69,10 @@ def read_file(path: str) -> str:
             print(f"  (pdf 건너뜀: {os.path.basename(path)} — {e})")
             return ""
         try:
-            import pymupdf  # PyMuPDF
+            try:
+                import pymupdf          # PyMuPDF 최신
+            except ImportError:
+                import fitz as pymupdf   # PyMuPDF 구버전(모듈명 fitz)
             with pymupdf.open(path) as doc:
                 return "\n".join(page.get_text() for page in doc)
         except ImportError:
