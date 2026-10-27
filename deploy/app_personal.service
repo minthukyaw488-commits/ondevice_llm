@@ -1,0 +1,31 @@
+# systemd 유닛 — 터미널/SSH 를 닫아도 FastAPI 앱이 계속 돌게 한다 (응용 미션 A1).
+#
+# 사용법:
+#   1) 아래 User, WorkingDirectory, --port 를 본인 환경에 맞게 수정
+#      (본인영문이름·포트번호). 기본은 ubuntu 계정, ~/team/me/ondevice_llm, 8001.
+#   2) sudo cp deploy/app_personal.service /etc/systemd/system/welfarehub-8001.service
+#   3) sudo systemctl daemon-reload
+#   4) sudo systemctl enable --now welfarehub-8001
+#   5) sudo systemctl status welfarehub-8001     # active (running) 확인
+#   로그:  journalctl -u welfarehub-8001 -f
+
+[Unit]
+Description=Daejeon Welfare HUB - personalized FastAPI app (app_personal)
+# Ollama 가 떠야 상담이 되므로, 있으면 뒤에 기동
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+# 본인 폴더로 수정
+WorkingDirectory=/home/ubuntu/team/본인영문이름/ondevice_llm
+# 포트를 본인 번호(8001~8003)로 수정
+ExecStart=/usr/bin/python3 -m uvicorn app_personal:app --host 0.0.0.0 --port 8001
+Restart=on-failure
+RestartSec=3
+# Ollama 주소(기본 로컬). 필요시 수정
+Environment=OLLAMA_HOST=http://localhost:11434
+
+[Install]
+WantedBy=multi-user.target
