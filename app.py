@@ -435,10 +435,16 @@ def _profile_has_info(p: dict) -> bool:
 def login_screen():
     """1단계 — 로그인(성함 기반, 프로토타입). 성공하면 auth_user 설정."""
     inject_css()
-    st.markdown('<div class="gov-wrap sec" style="max-width:520px;margin:8vh auto">',
+    st.markdown('<div class="gov-wrap sec" style="max-width:500px;margin:7vh auto">',
                 unsafe_allow_html=True)
-    st.markdown("## 🏠 대전노인복지 HUB")
-    st.markdown("#### 로그인")
+    st.markdown(
+        '<div style="text-align:center;margin-bottom:10px">'
+        '<div class="seal" style="margin:0 auto 14px;width:58px;height:58px;font-size:30px">🏠</div>'
+        '<div style="font-size:26px;font-weight:800;color:#0f2f6f;letter-spacing:-.03em">대전노인복지 HUB</div>'
+        '<div style="color:#5c6b86;font-size:14px;margin-top:4px">대전광역시 · 어르신 복지 AI</div>'
+        '<span style="display:inline-block;margin-top:15px;font-size:12.5px;font-weight:800;color:#2f6bff;'
+        'background:#f5f8fd;padding:6px 14px;border-radius:999px">1단계 · 로그인</span>'
+        '</div>', unsafe_allow_html=True)
     st.caption("성함을 입력하시면 시작합니다. (프로토타입 — 실제 서비스에서는 본인 인증·동의가 필요합니다)")
     name = st.text_input("성함", placeholder="예: 홍길동")
     if st.button("시작하기", type="primary", use_container_width=True):
@@ -465,10 +471,15 @@ def profile_screen():
     inject_css()
     p = st.session_state.get("profile", {})
     user = st.session_state.get("auth_user", "")
-    st.markdown('<div class="gov-wrap sec" style="max-width:640px;margin:5vh auto">',
+    st.markdown('<div class="gov-wrap sec" style="max-width:620px;margin:5vh auto">',
                 unsafe_allow_html=True)
-    st.markdown(f"## {user} 님, 반갑습니다")
-    st.markdown("#### 내 정보 입력")
+    st.markdown(
+        '<div style="text-align:center;margin-bottom:12px">'
+        '<div class="seal" style="margin:0 auto 12px;width:52px;height:52px;font-size:26px">🧓</div>'
+        f'<div style="font-size:23px;font-weight:800;color:#0f2f6f;letter-spacing:-.03em">{user} 님, 반갑습니다</div>'
+        '<span style="display:inline-block;margin-top:12px;font-size:12.5px;font-weight:800;color:#2f6bff;'
+        'background:#f5f8fd;padding:6px 14px;border-radius:999px">2단계 · 내 정보</span>'
+        '</div>', unsafe_allow_html=True)
     st.caption("받으실 수 있는 복지를 정확히 찾기 위해 사용됩니다. 모르면 비워두셔도 됩니다.")
     tri = {"모름": None, "예": True, "아니오": False}
     rev = {None: "모름", True: "예", False: "아니오"}
@@ -515,8 +526,10 @@ def profile_screen():
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-def eligible_panel():
-    """session_state['profile'] 기준으로 받을 수 있는 복지를 보여준다."""
+def my_welfare_cards():
+    """session_state['profile'] 기준으로 '내 맞춤 복지'를 카드로 보여준다.
+    카드를 누르면 ?ask= 로 해당 복지를 AI 도우미에게 바로 물어본다."""
+    from urllib.parse import quote
     p = st.session_state.get("profile", {})
     if not _profile_has_info(p):
         return
@@ -525,13 +538,36 @@ def eligible_panel():
         eligible, maybe, _ = recommend(Profile(**p))
     except Exception:
         return
-    names = ", ".join(r.welfare.name for r in eligible) or "추가 정보 필요"
-    st.markdown('<div class="gov-wrap sec">', unsafe_allow_html=True)
-    st.success(f"**받으실 수 있는 복지:** {names}")
-    st.caption(f"입력하신 정보: {_profile_summary(p)}  ·  정확한 기준은 주민센터 확인")
+    user = st.session_state.get("auth_user", "어르신")
+    # 카드 색상(정부 포털 톤) 순환
+    palette = ["#1f7a43", "#1d6fe0", "#b0472b", "#6b4fbb",
+               "#0f766e", "#b45309", "#be185d", "#0369a1"]
+    cards = ""
+    for i, r in enumerate(eligible):
+        c = palette[i % len(palette)]
+        ask_q = f"{r.welfare.name} 대상과 신청 방법을 알려줘"
+        cards += (
+            f'<a class="cat-card" style="--c:{c}" href="?ask={quote(ask_q)}" target="_self">'
+            f'<span class="cat-ic">✅</span>'
+            f'<span class="cat-name">{r.welfare.name}</span>'
+            f'<span class="cat-desc">{r.welfare.summary}</span>'
+            f'<span class="arw">→</span></a>')
+    if not cards:
+        cards = ('<div class="cat-desc" style="color:#5c6b86">입력하신 정보로는 '
+                 '바로 해당되는 복지를 찾지 못했어요. 정보를 더 입력해 보세요.</div>')
+    maybe_html = ""
     if maybe:
-        st.caption("확인하면 가능: " + ", ".join(r.welfare.name for r in maybe))
-    st.markdown('</div>', unsafe_allow_html=True)
+        chips = "".join(f'<span class="chip">{r.welfare.name}</span>' for r in maybe)
+        maybe_html = ('<p class="sub" style="margin-top:22px">확인하면 받으실 수 있어요</p>'
+                      f'<div class="chips">{chips}</div>')
+    st.markdown(
+        '<div class="sec"><div class="gov-wrap">'
+        f'<h2>{user} 님 맞춤 복지</h2>'
+        f'<p class="sub">입력하신 정보({_profile_summary(p)})로 받으실 수 있는 복지입니다. '
+        '카드를 누르면 자세히 안내해 드려요. · 정확한 기준은 주민센터 확인</p>'
+        f'<div class="cat-grid">{cards}</div>'
+        f'{maybe_html}'
+        '</div></div>', unsafe_allow_html=True)
 
 
 # --------------------------------------------------------------------------
@@ -1009,7 +1045,7 @@ def main():
         hero_c = st.container()
         lower_c = st.container()
         with lower_c:
-            eligible_panel()   # 내 정보가 있으면 '받을 수 있는 복지' 패널 표시
+            my_welfare_cards()   # 내 맞춤 복지(카드) — 프로필 기반 추천
             category_cards(client)
             popular_and_notices()
             footer()
