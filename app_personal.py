@@ -187,42 +187,90 @@ PAGE = """<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>대전노인복지 HUB</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <style>
-  :root{--brand:#1d6fe0;--ink:#14213d;--line:#d9e2f0;--ok:#1f7a43;--okbg:#eaf2e9;--bot:#eef3fb;--muted:#5b6b86}
+  :root{--navy:#0f2f6f;--navy2:#0a2350;--accent:#2f6bff;--ink:#15233d;--muted:#5c6b86;
+        --bg:#eef2f9;--surface:#fff;--surface2:#f5f8fd;--line:#e6ebf4;--ok:#1f7a43;--okbg:#eaf2e9}
   *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,"Noto Sans KR",sans-serif;background:#f3f6fb;color:var(--ink)}
-  header{background:var(--brand);color:#fff;padding:15px 18px}
-  header h1{margin:0;font-size:19px;font-weight:800}
-  header small{display:block;font-weight:500;font-size:12.5px;opacity:.9;margin-top:3px}
-  main{max-width:720px;margin:0 auto;padding:16px}
-  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
-  .step{font-size:13px;font-weight:800;color:var(--brand);margin-bottom:10px}
-  label{display:block;font-size:13.5px;font-weight:700;margin:10px 0 5px}
-  input,select{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:11px 12px;font-size:16px;outline:none;background:#fff}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .btn{width:100%;margin-top:14px;border:0;border-radius:12px;background:var(--brand);color:#fff;font-size:16px;font-weight:800;padding:13px}
-  .btn:disabled{background:#aebfd8}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:'Pretendard','Pretendard Variable',-apple-system,'Noto Sans KR',sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:0 20px}
+  /* 상단 유틸 바 */
+  .util{background:var(--navy2);color:#c7d4ee;font-size:12.5px}
+  .util .wrap{display:flex;justify-content:flex-end;gap:20px;padding:8px 20px}
+  .util span{opacity:.85}
+  /* 헤더 */
+  .gnav{background:rgba(255,255,255,.92);backdrop-filter:saturate(1.4) blur(8px);
+    border-bottom:1px solid var(--line);position:sticky;top:0;z-index:50}
+  .gnav .row{display:flex;align-items:center;gap:13px;padding:15px 20px;max-width:860px;margin:0 auto}
+  .seal{width:42px;height:42px;border-radius:13px;background:linear-gradient(140deg,var(--accent),var(--navy));
+    color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;
+    box-shadow:0 6px 16px -4px rgba(47,107,255,.4)}
+  .brand b{font-size:21px;font-weight:800;color:var(--navy);letter-spacing:-.03em}
+  .brand small{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-top:1px}
+  /* 히어로 배너 */
+  .hero{color:#fff;padding:30px 0;
+    background:linear-gradient(90deg,var(--navy2) 0%,var(--navy) 55%,rgba(15,47,111,.55) 100%)}
+  .hero .eyebrow{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:#e2ecff;background:#ffffff2b;padding:5px 13px;border-radius:999px;margin-bottom:10px}
+  .hero h1{font-size:30px;font-weight:800;margin:0 0 6px;letter-spacing:-.03em;line-height:1.18}
+  .hero p{font-size:16px;color:#eaf1ff;margin:0;line-height:1.5}
+  main{padding:26px 0 48px}
+  /* 카드 */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:22px;
+    padding:26px;margin-bottom:18px;box-shadow:0 18px 40px -26px rgba(15,47,111,.35)}
+  .step{display:inline-block;font-size:12.5px;font-weight:800;color:var(--accent);
+    background:var(--surface2);padding:5px 12px;border-radius:999px;margin-bottom:16px;letter-spacing:-.01em}
+  label{display:block;font-size:13.5px;font-weight:700;margin:12px 0 6px;color:var(--ink)}
+  input,select{width:100%;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;
+    font-size:16px;outline:none;background:var(--surface);color:var(--ink);transition:border-color .15s,box-shadow .15s}
+  input:focus,select:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(47,107,255,.18)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .btn{width:100%;margin-top:18px;border:0;border-radius:14px;color:#fff;font-size:16.5px;font-weight:800;
+    padding:14px;cursor:pointer;background:linear-gradient(135deg,var(--accent),var(--navy));
+    box-shadow:0 14px 28px -12px rgba(47,107,255,.55);transition:transform .16s,box-shadow .16s}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 20px 36px -12px rgba(47,107,255,.65)}
+  .btn:disabled{background:#aebfd8;box-shadow:none;transform:none}
   .hide{display:none}
-  .elig{background:var(--okbg);border:1px solid #cadfc7;border-left:5px solid var(--ok);border-radius:12px;padding:12px 14px;margin:10px 0;font-size:14.5px}
+  /* 받을 수 있는 복지 패널 */
+  .elig{background:var(--okbg);border:1px solid #cadfc7;border-left:5px solid var(--ok);
+    border-radius:14px;padding:16px 18px;margin:4px 0 14px;font-size:15px;line-height:1.55}
   .elig b{color:var(--ok)}
-  /* chat */
-  #chat{display:flex;flex-direction:column;gap:10px;min-height:220px;max-height:50vh;overflow-y:auto;padding:4px}
-  .row{display:flex;gap:8px;max-width:92%}
+  /* 채팅 */
+  #chat{display:flex;flex-direction:column;gap:12px;min-height:200px;max-height:48vh;overflow-y:auto;padding:4px}
+  .row{display:flex;gap:9px;max-width:88%}
   .row.me{align-self:flex-end;flex-direction:row-reverse}
-  .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--bot);font-size:16px}
-  .row.me .av{background:var(--brand)}
-  .bub{padding:10px 13px;border-radius:15px;font-size:15.5px;line-height:1.5;white-space:pre-wrap}
-  .bot .bub{background:var(--bot)} .me .bub{background:var(--brand);color:#fff}
-  .src{margin-top:5px;font-size:11.5px;color:var(--muted)}
-  .inrow{display:flex;gap:8px;margin-top:10px}
-  #q{flex:1;border:1.5px solid var(--line);border-radius:20px;padding:11px 15px;font-size:16px;outline:none}
-  #send{width:48px;border:0;border-radius:50%;background:var(--brand);color:#fff;font-size:20px}
-  .note{font-size:12px;color:var(--muted);margin-top:10px}
-  .link{color:var(--brand);font-weight:700;cursor:pointer;font-size:13px}
+  .av{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;
+    background:var(--surface2);border:1px solid var(--line);font-size:17px;flex:none}
+  .row.me .av{background:linear-gradient(135deg,var(--accent),var(--navy));border:0}
+  .bub{padding:12px 16px;border-radius:18px;font-size:15.5px;line-height:1.55;white-space:pre-wrap;
+    box-shadow:0 1px 3px rgba(15,47,111,.07)}
+  .bot .bub{background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:6px}
+  .me .bub{background:linear-gradient(135deg,var(--accent),var(--navy));color:#fff;border-bottom-right-radius:6px}
+  .src{margin-top:6px;font-size:12px;color:var(--muted)}
+  .inrow{display:flex;gap:9px;margin-top:14px}
+  #q{flex:1;border:1.5px solid var(--line);border-radius:22px;padding:12px 16px;font-size:16px;outline:none}
+  #q:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(47,107,255,.18)}
+  #send{width:50px;border:0;border-radius:50%;color:#fff;font-size:20px;cursor:pointer;
+    background:linear-gradient(135deg,var(--accent),var(--navy))}
+  .note{font-size:12.5px;color:var(--muted);margin-top:12px;line-height:1.5}
+  .link{color:var(--accent);font-weight:700;cursor:pointer;font-size:13px;margin-left:6px}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}.hero h1{font-size:24px}}
 </style></head><body>
-<header><h1>🏠 대전노인복지 HUB</h1>
-<small>내 정보를 넣으면, 나에게 맞는 복지를 알려주고 상담해 드립니다</small></header>
-<main>
+
+<div class="util"><div class="wrap"><span>로그인</span><span>회원가입</span><span>사이트맵</span><span>English</span></div></div>
+<div class="gnav"><div class="row">
+  <div class="seal">🏠</div>
+  <div class="brand"><b>대전노인복지 HUB</b><small>대전광역시 · 어르신 복지 AI</small></div>
+</div></div>
+<div class="hero"><div class="wrap">
+  <span class="eyebrow">맞춤형 복지 안내</span>
+  <h1>어르신, 받으실 수 있는 복지를 찾아드립니다</h1>
+  <p>내 정보를 넣으면 나에게 맞는 복지를 알려주고, 공공문서 근거로 상담해 드립니다.</p>
+</div></div>
+
+<main><div class="wrap">
 
   <!-- STEP 1: 로그인 -->
   <div class="card" id="c1">
@@ -265,7 +313,7 @@ PAGE = """<!doctype html>
     <div class="note">답변은 어르신 정보와 대전 공공문서 근거를 함께 반영합니다.</div>
   </div>
 
-</main>
+</div></main>
 <script>
 const $=id=>document.getElementById(id);
 let USER=null;
