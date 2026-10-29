@@ -384,7 +384,9 @@ def ask_text(client, q: str):
     p = st.session_state.get("profile", {})
     q_send = q
     if _profile_has_info(p):
-        q_send = f"{q}\n\n(상담 대상자: {_profile_summary(p)}. 이 분 상황에 맞춰 안내해 주세요.)"
+        q_send = (f"{q}\n\n(참고 — 상담 대상자: {_profile_summary(p)}. "
+                  "복지 관련 질문이면 이 분 상황에 맞춰 답하고, 인사·일상 대화면 "
+                  "복지 내용을 나열하지 말고 짧게 인사로만 답하세요.)")
     # Demo toggle: RAG on (문서 근거) vs off (LLM만).
     if st.session_state.get("use_rag", True):
         r = client.ask(q_send)
